@@ -252,19 +252,28 @@ async function startApp() {
   const code = params.get('code');
   let token = localStorage.getItem('spotify_token');
 
-  // ONLY exchange if we have a code and NO token yet
-  if (code && !token) {
-    token = await exchangeCode(code);
+  // 1. If we have a code in the URL, try to exchange it immediately
+  if (code) {
+    // If we already have a token, just clean the URL
     if (token) {
-      // Clean the URL so the 'code' doesn't sit there
-      window.history.replaceState({}, '', window.location.pathname);
+      window.history.replaceState({}, '', REDIRECT_URI);
+    } else {
+      // Exchange code for token
+      token = await exchangeCode(code);
+      if (token) {
+        window.history.replaceState({}, '', REDIRECT_URI);
+      }
     }
   }
 
+  // 2. Now render the UI based on whether we have a token
   renderWebUI(!!token);
 
+  // 3. Initialize the Glasses Bridge
   try {
     const bridge = await waitForEvenAppBridge();
+    
+    // Always run the UI loop so it can show "Disconnected" if needed
     setInterval(() => updateGlassesUI(bridge), 1000);
 
     if (token) {
@@ -273,7 +282,7 @@ async function startApp() {
 
       bridge.onEvenHubEvent((e) => {
         if (e.listEvent && typeof e.listEvent.currentSelectItemIndex === 'number') {
-          const cmds: any[] = ['play', 'pause', 'next', 'previous'];
+          const cmds = ['play', 'pause', 'next', 'previous'];
           const type = cmds[e.listEvent.currentSelectItemIndex];
           if (type) {
              const method = (type === 'next' || type === 'previous') ? 'POST' : 'PUT';
@@ -285,7 +294,9 @@ async function startApp() {
         }
       });
     }
-  } catch (e) { console.error(e); }
+  } catch (e) { 
+    console.error("Bridge Error:", e); 
+  }
 }
 
 window.addEventListener('load', startApp);
