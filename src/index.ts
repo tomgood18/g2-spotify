@@ -10,8 +10,7 @@ import {
 // --- CONFIG ---
 // !!! IMPORTANT: Replace 127.0.0.1 with your MacBook IP (e.g., 192.168.1.XX) !!!
 const CLIENT_ID = '0dac788532204ec9aed1b36ea9a20f0d';
-// const REDIRECT_URI = 'http://127.0.0.1:5173/'; 
-const REDIRECT_URI = 'https://192.168.20.39:5173/'; 
+const REDIRECT_URI = "https://tomgood18.github.io/g2-spotify/";
 const SCOPES = 'user-modify-playback-state user-read-playback-state user-read-currently-playing';
 
 // --- STATE ---
