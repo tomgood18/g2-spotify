@@ -11,5 +11,6 @@ export default defineConfig({
     port: 5173,
     // Turn this to true so basicSsl can take over
     https: true 
-  }
+  },
+  base: '/g2-spotify/',
 });
