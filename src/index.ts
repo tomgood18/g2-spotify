@@ -78,18 +78,19 @@ const generateRandomString = (l: number) => {
 
 async function redirectToSpotify() {
   const v = generateRandomString(64);
-  localStorage.setItem('code_verifier', v);
+  localStorage.setItem('code_verifier', v); // Save it BEFORE leaving
 
-  // USING THE FALLBACK HASH HERE
   const hashed = sha256_fallback(v);
-  
-  // Base64Url encode
   const challenge = btoa(String.fromCharCode(...hashed))
     .replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
 
   const p = new URLSearchParams({
-    response_type: 'code', client_id: CLIENT_ID, scope: SCOPES,
-    code_challenge_method: 'S256', code_challenge: challenge, redirect_uri: REDIRECT_URI,
+    response_type: 'code', 
+    client_id: CLIENT_ID, 
+    scope: SCOPES,
+    code_challenge_method: 'S256', 
+    code_challenge: challenge, 
+    redirect_uri: REDIRECT_URI,
   });
   window.location.href = `https://accounts.spotify.com/authorize?${p.toString()}`;
 }
@@ -251,9 +252,13 @@ async function startApp() {
   const code = params.get('code');
   let token = localStorage.getItem('spotify_token');
 
+  // ONLY exchange if we have a code and NO token yet
   if (code && !token) {
     token = await exchangeCode(code);
-    window.history.replaceState({}, '', window.location.pathname);
+    if (token) {
+      // Clean the URL so the 'code' doesn't sit there
+      window.history.replaceState({}, '', window.location.pathname);
+    }
   }
 
   renderWebUI(!!token);
