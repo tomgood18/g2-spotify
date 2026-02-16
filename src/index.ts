@@ -8,7 +8,6 @@ import {
 } from '@evenrealities/even_hub_sdk';
 
 // --- CONFIG ---
-// !!! IMPORTANT: Replace 127.0.0.1 with your MacBook IP (e.g., 192.168.1.XX) !!!
 const CLIENT_ID = '0dac788532204ec9aed1b36ea9a20f0d';
 const REDIRECT_URI = "https://tomgood18.github.io/g2-spotify/";
 const SCOPES = 'user-modify-playback-state user-read-playback-state user-read-currently-playing';
@@ -97,17 +96,28 @@ async function redirectToSpotify() {
 
 async function exchangeCode(code: string) {
   const v = localStorage.getItem('code_verifier') || '';
-  const r = await fetch('https://accounts.spotify.com/api/token', {
+  const r = await fetch('https://accounts.spotify.com/api/token', { // Ensure HTTPS
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
-      client_id: CLIENT_ID, grant_type: 'authorization_code',
-      code, redirect_uri: REDIRECT_URI, code_verifier: v
+      client_id: CLIENT_ID, 
+      grant_type: 'authorization_code',
+      code, 
+      redirect_uri: REDIRECT_URI, 
+      code_verifier: v
     })
   });
+  
   const data = await r.json();
-  if (data.access_token) localStorage.setItem('spotify_token', data.access_token);
-  return data.access_token;
+  if (data.access_token) {
+    localStorage.setItem('spotify_token', data.access_token);
+    return data.access_token;
+  } else {
+    console.error("Token exchange failed:", data);
+    // If it fails, clear the code from the URL so we don't loop
+    window.history.replaceState({}, '', REDIRECT_URI);
+    return null;
+  }
 }
 
 // ================= UI RENDERING (G2 GLASSES) =================
