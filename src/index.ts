@@ -112,9 +112,11 @@ async function updateGlassesUI(bridge: any, forceListRefresh = false) {
   const displayContent = `\n  ${trackData.name}\n  ${trackData.artist} - ${timeStr}`;
 
   try {
-    // If switching menus, we redeploy the whole page container
     if (isFirstRender || forceListRefresh) {
+      console.log("[Debug] Deploying NEW container. SubMenu:", isSubMenu);
       const menuNames = getMenuItems();
+      console.log("[Debug] Menu items being sent:", menuNames);
+      
       const textObj = TextContainerProperty.fromJson({
         xPosition: 10, yPosition: 10, width: 556, height: 90, 
         containerID: 1, containerName: 'info-bar',
@@ -129,17 +131,17 @@ async function updateGlassesUI(bridge: any, forceListRefresh = false) {
         isEventCapture: 1
       });
 
-      await bridge.createStartUpPageContainer(CreateStartUpPageContainer.fromJson({
+      const result = await bridge.createStartUpPageContainer(CreateStartUpPageContainer.fromJson({
         containerTotalNum: 2, textObject: [textObj], listObject: [listObj]
       }));
+      console.log("[Debug] bridge.createStartUpPageContainer result:", result);
       isFirstRender = false;
     } else {
-      // Regular ticker update for song info only
       await bridge.textContainerUpgrade(TextContainerUpgrade.fromJson({
         containerID: 1, containerName: 'info-bar', content: displayContent
       }));
     }
-  } catch (e) { console.error("Glasses UI Update Fail:", e); }
+  } catch (e) { console.error("[Debug] UI Update ERROR:", e); }
 }
 
 function renderWebUI(isLoggedIn: boolean) {
@@ -155,13 +157,18 @@ function renderWebUI(isLoggedIn: boolean) {
 
 async function fetchDevices(token: string) {
   try {
+    console.log("[Debug] Fetching devices...");
     const res = await fetch('https://api.spotify.com/v1/me/player/devices', {
       headers: { Authorization: `Bearer ${token}` }
     });
     const data = await res.json();
     deviceList = data.devices || [];
+    console.log("[Debug] Devices found:", deviceList.length);
     return deviceList;
-  } catch (e) { return []; }
+  } catch (e) { 
+    console.error("[Debug] Device Fetch Error:", e);
+    return []; 
+  }
 }
 
 async function startApp() {
@@ -189,15 +196,17 @@ async function startApp() {
           idx = parsed.currentSelectItemIndex;
         }
 
+        console.log("[Debug] Tap Event Index:", idx, "Current Menu:", isSubMenu ? "Sub" : "Main");
+
         if (typeof idx === 'number') {
           if (!isSubMenu) {
             const cmds = ['play', 'pause', 'next', 'previous', 'devices'];
             const action = cmds[idx];
+            console.log("[Debug] Main Menu Action:", action);
 
             if (action === 'devices') {
-              isSubMenu = true;
+              isSubMenu = true; 
               await fetchDevices(token!);
-              // Explicitly force a re-render of the list container
               await updateGlassesUI(bridge, true);
             } else if (action) {
               const method = (action === 'play' || action === 'pause') ? 'PUT' : 'POST';
@@ -206,26 +215,27 @@ async function startApp() {
               });
             }
           } else {
-            // Sub-menu logic: Check if "BACK" (last item) or a device was clicked
+            console.log("[Debug] Sub Menu Clicked at Index:", idx);
             if (idx >= deviceList.length) {
+              console.log("[Debug] BACK selected");
               isSubMenu = false;
             } else {
-              const deviceId = deviceList[idx]?.id;
-              if (deviceId) {
+              const dId = deviceList[idx]?.id;
+              console.log("[Debug] Device Selected ID:", dId);
+              if (dId) {
                 await fetch('https://api.spotify.com/v1/me/player', {
                   method: 'PUT',
                   headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ device_ids: [deviceId], play: true })
+                  body: JSON.stringify({ device_ids: [dId], play: true })
                 });
               }
               isSubMenu = false;
             }
-            // Flip back to main menu
             await updateGlassesUI(bridge, true);
           }
         }
       });
-    } catch (e) { console.error(e); }
+    } catch (e) { console.error("[Debug] Bridge Init Error:", e); }
   }
 }
 
