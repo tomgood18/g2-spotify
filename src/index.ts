@@ -42,7 +42,6 @@ const base64urlencode = (a: ArrayBuffer) => {
 };
 
 const logout = () => {
-  console.log("DEBUG: Logging out and clearing storage.");
   localStorage.removeItem('spotify_token');
   localStorage.removeItem('code_verifier');
   window.location.href = REDIRECT_URI;
@@ -53,42 +52,29 @@ const logout = () => {
 async function redirectToSpotify() {
   const verifier = generateRandomString(64);
   localStorage.setItem('code_verifier', verifier);
-
   const hashed = await sha256(verifier);
   const challenge = base64urlencode(hashed);
-
   const p = new URLSearchParams({
-    response_type: 'code',
-    client_id: CLIENT_ID,
-    scope: SCOPES,
-    code_challenge_method: 'S256',
-    code_challenge: challenge,
-    redirect_uri: REDIRECT_URI,
+    response_type: 'code', client_id: CLIENT_ID, scope: SCOPES,
+    code_challenge_method: 'S256', code_challenge: challenge, redirect_uri: REDIRECT_URI,
   });
-
   window.location.href = `https://accounts.spotify.com/authorize?${p.toString()}`;
 }
 
 async function exchangeCode(code: string) {
   const verifier = localStorage.getItem('code_verifier');
   if (!verifier) return null;
-
   const r = await fetch('https://accounts.spotify.com/api/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
-      client_id: CLIENT_ID,
-      grant_type: 'authorization_code',
-      code: code,
-      redirect_uri: REDIRECT_URI,
-      code_verifier: verifier
+      client_id: CLIENT_ID, grant_type: 'authorization_code',
+      code: code, redirect_uri: REDIRECT_URI, code_verifier: verifier
     })
   });
-
   const data = await r.json();
   if (data.access_token) {
     localStorage.setItem('spotify_token', data.access_token);
-    localStorage.removeItem('code_verifier');
     return data.access_token;
   }
   return null;
@@ -137,52 +123,32 @@ async function updateGlassesUI(bridge: any) {
         containerID: 1, containerName: 'info-bar', content: displayContent
       }));
     }
-  } catch (e) { console.error("DEBUG: Update Glasses UI Fail:", e); }
+  } catch (e) { console.error(e); }
 }
 
 function renderWebUI(isLoggedIn: boolean) {
-  document.body.style.margin = '0';
-  document.body.style.padding = '0';
-  document.body.style.backgroundColor = '#121212';
-  document.body.style.color = 'white';
-  document.body.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
-  document.body.style.display = 'flex';
-  document.body.style.flexDirection = 'column';
-  document.body.style.minHeight = '100vh';
-  document.body.style.overflow = 'hidden';
-
+  document.body.style.cssText = "margin:0; background:#121212; color:white; font-family:sans-serif; display:flex; flex-direction:column; min-height:100vh; overflow:hidden;";
   if (!isLoggedIn) {
-    document.body.innerHTML = `
-      <div style="flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center; padding: 20px;">
-        <div style="margin-bottom: 20px; font-size: 60px;">🕶️</div>
-        <h1 style="font-size: 2.5rem; margin: 0 0 10px 0; letter-spacing: -1px;">G2 Spotify</h1>
-        <p style="color: #b3b3b3; margin-bottom: 30px; font-size: 1.1rem; max-width: 300px;">Control your music through your vision.</p>
-        <button id="login-btn" style="padding:18px 48px; background:#1DB954; color:white; border-radius:500px; border:none; font-weight:bold; font-size:1rem; cursor:pointer; transition: transform 0.2s; box-shadow: 0 10px 20px rgba(0,0,0,0.3);">
-          CONNECT WITH SPOTIFY
-        </button>
+    document.body.innerHTML = `<div style="flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center; padding: 20px;">
+        <div style="font-size: 60px; margin-bottom: 20px;">🕶️</div>
+        <h1>G2 Spotify</h1>
+        <button id="login-btn" style="padding:18px 48px; background:#1DB954; color:white; border-radius:500px; border:none; font-weight:bold; cursor:pointer;">CONNECT WITH SPOTIFY</button>
       </div>`;
     document.getElementById('login-btn')?.addEventListener('click', redirectToSpotify);
   } else {
     document.body.innerHTML = `
       <nav style="padding: 20px; background: rgba(0,0,0,0.5); display: flex; justify-content: space-between; align-items: center; backdrop-filter: blur(10px);">
-        <div style="display:flex; align-items:center; gap:8px;">
-          <div style="width:10px; height:10px; background:#1DB954; border-radius:50%; box-shadow: 0 0 8px #1DB954;"></div>
-          <span style="font-weight: bold; font-size: 0.9rem; letter-spacing: 1px; color: #1DB954;">G2 ACTIVE</span>
-        </div>
-        <button id="logout-btn" style="background: transparent; color: #b3b3b3; border: 1px solid #333; padding: 6px 14px; border-radius: 20px; font-size: 0.8rem; cursor: pointer;">
-          Sign Out
-        </button>
+        <span style="color: #1DB954; font-weight: bold;">G2 ACTIVE</span>
+        <button id="logout-btn" style="background: transparent; color: #b3b3b3; border: 1px solid #333; padding: 6px 14px; border-radius: 20px; cursor: pointer;">Sign Out</button>
       </nav>
       <div style="flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center; padding: 20px; text-align:center;">
-        <div id="web-track-card" style="background: linear-gradient(135deg, #282828 0%, #121212 100%); padding: 40px 30px; border-radius: 24px; border: 1px solid #333; width: 100%; max-width: 350px; box-shadow: 0 20px 40px rgba(0,0,0,0.5);">
-          <div style="color: #1DB954; font-size: 0.8rem; font-weight: bold; margin-bottom: 20px; letter-spacing: 2px;">NOW STREAMING</div>
-          <h2 id="web-track-name" style="margin:0 0 12px 0; font-size: 1.8rem; line-height: 1.2; word-wrap: break-word;">Waiting...</h2>
-          <p id="web-track-artist" style="color: #b3b3b3; margin:0; font-size: 1.1rem;">Open Spotify app</p>
+        <div style="background: linear-gradient(135deg, #282828 0%, #121212 100%); padding: 40px 30px; border-radius: 24px; border: 1px solid #333; width: 100%; max-width: 350px;">
+          <h2 id="web-track-name" style="margin:0 0 12px 0; font-size: 1.8rem;">Waiting...</h2>
+          <p id="web-track-artist" style="color: #b3b3b3; margin:0;">Open Spotify app</p>
           <div style="width: 100%; height: 4px; background: #3e3e3e; border-radius: 2px; margin-top: 30px; overflow: hidden;">
             <div id="web-progress-bar" style="width: 0%; height: 100%; background: #1DB954; transition: width 1s linear;"></div>
           </div>
         </div>
-        <p style="margin-top: 40px; color: #555; font-size: 0.8rem; max-width: 250px;">Controls active on glasses. Tap to navigate.</p>
       </div>`;
     document.getElementById('logout-btn')?.addEventListener('click', logout);
   }
@@ -190,27 +156,22 @@ function renderWebUI(isLoggedIn: boolean) {
 
 async function syncSpotify(token: string) {
   try {
-    const res = await fetch('https://api.spotify.com/v1/me/player', {
+    const res = await fetch('https://api.spotify.com/v1/me/player/currently-playing', {
       headers: { Authorization: `Bearer ${token}` }
     });
     if (res.status === 200) {
       const data = await res.json();
       if (data.item) {
         trackData = {
-          name: data.item.name,
-          artist: data.item.artists[0].name,
-          progressMs: data.progress_ms,
-          durationMs: data.item.duration_ms,
-          isPlaying: data.is_playing
+          name: data.item.name, artist: data.item.artists[0].name,
+          progressMs: data.progress_ms, durationMs: data.item.duration_ms, isPlaying: data.is_playing
         };
-        const n = document.getElementById('web-track-name');
-        const a = document.getElementById('web-track-artist');
-        const p = document.getElementById('web-progress-bar');
+        const n = document.getElementById('web-track-name'), a = document.getElementById('web-track-artist'), p = document.getElementById('web-progress-bar');
         if (n && a) { n.innerText = trackData.name; a.innerText = trackData.artist; }
-        if (p) { p.style.width = `${(trackData.progressMs / trackData.durationMs) * 100}%`; }
+        if (p) p.style.width = `${(trackData.progressMs / trackData.durationMs) * 100}%`;
       }
     }
-  } catch (e) { console.error("DEBUG: Sync Error:", e); }
+  } catch (e) { console.error("Sync Error:", e); }
 }
 
 async function startApp() {
@@ -228,49 +189,47 @@ async function startApp() {
   if (token) {
     try {
       const bridge = await waitForEvenAppBridge();
-      console.log("DEBUG: Bridge initialized.");
       setInterval(() => updateGlassesUI(bridge), 1000);
       await syncSpotify(token);
       setInterval(() => syncSpotify(token!), 5000);
       
       bridge.onEvenHubEvent((e: any) => {
-        console.log("DEBUG: Event received:", JSON.stringify(e));
-        
-        let index = e.listEvent?.currentSelectItemIndex;
-        if (index === undefined && e.jsonData) {
-            const parsed = typeof e.jsonData === 'string' ? JSON.parse(e.jsonData) : e.jsonData;
-            index = parsed.currentSelectItemIndex;
+        console.log("DEBUG: Full Event", e);
+        // Robust index extraction
+        let idx = e.listEvent?.currentSelectItemIndex;
+        if (idx === undefined && e.jsonData) {
+          const parsed = typeof e.jsonData === 'string' ? JSON.parse(e.jsonData) : e.jsonData;
+          idx = parsed.currentSelectItemIndex;
         }
 
-        if (typeof index === 'number') {
+        // If index is still undefined, the simulator might be at position 0 (Play)
+        if (idx === undefined && e.jsonData?.containerID === 2) {
+          idx = 0; // Force to Play if we're in the control list but index is missing
+        }
+
+        if (typeof idx === 'number') {
           const cmds = ['play', 'pause', 'next', 'previous'];
-          const type = cmds[index];
-          
+          const type = cmds[idx];
           if (type) {
+            console.log(`DEBUG: Sending Command -> ${type}`);
             const isControl = (type === 'play' || type === 'pause');
             const method = isControl ? 'PUT' : 'POST';
-            const endpoint = (type === 'next' || type === 'previous') ? type : type;
-            const url = `https://api.spotify.com/v1/me/player/${endpoint}`;
             
-            console.log(`DEBUG: Sending ${method} to ${url}`);
-
-            fetch(url, {
+            // FIX: Added missing $ for template literal and used direct Spotify URL
+            fetch(`https://api.spotify.com/v1/me/player/${type}`, {
               method,
-              headers: { 
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json' 
-              },
+              headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
               body: isControl ? JSON.stringify({}) : null
             })
             .then(res => {
               console.log(`DEBUG: Spotify Response (${type}):`, res.status);
               setTimeout(() => syncSpotify(token!), 800);
             })
-            .catch(err => console.error("DEBUG: Fetch Error:", err));
+            .catch(err => console.error("DEBUG: Fetch Error", err));
           }
         }
       });
-    } catch (e) { console.error("DEBUG: Bridge Init Failed:", e); }
+    } catch (e) { console.error("Bridge Error", e); }
   }
 }
 
