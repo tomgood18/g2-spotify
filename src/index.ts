@@ -4,7 +4,8 @@ import {
   TextContainerProperty, 
   ListContainerProperty, 
   ListItemContainerProperty, 
-  TextContainerUpgrade 
+  TextContainerUpgrade,
+  RebuildPageContainer 
 } from '@evenrealities/even_hub_sdk';
 
 // --- CONFIG ---
@@ -16,7 +17,6 @@ const SCOPES = 'user-modify-playback-state user-read-playback-state user-read-cu
 let isFirstRender = true;
 let isSubMenu = false; 
 let deviceList: any[] = [];
-let currentPageID = 1; // Used to force refresh by incrementing IDs
 let trackData = {
   name: "Loading...",
   artist: "Spotify",
@@ -61,7 +61,7 @@ async function redirectToSpotify() {
     response_type: 'code', client_id: CLIENT_ID, scope: SCOPES,
     code_challenge_method: 'S256', code_challenge: challenge, redirect_uri: REDIRECT_URI,
   });
-  window.location.href = `https://accounts.spotify.com/authorize?${p.toString()}`;
+  window.location.href = `https://accounts.spotify.com/authorize?$?${p.toString()}`;
 }
 
 async function exchangeCode(code: string) {
@@ -113,36 +113,42 @@ async function updateGlassesUI(bridge: any, forcePageRefresh = false) {
   const displayContent = `\n  ${trackData.name}\n  ${trackData.artist} - ${timeStr}`;
 
   try {
-    if (isFirstRender || forcePageRefresh) {
-      // Increment ID to force the bridge to recognize a new layout
-      if (forcePageRefresh) currentPageID += 2; 
-      
-      console.log(`[Debug] Creating Page with IDs: ${currentPageID}, ${currentPageID + 1}`);
-      const menuNames = getMenuItems();
-      
-      const textObj = TextContainerProperty.fromJson({
-        xPosition: 10, yPosition: 10, width: 556, height: 90, 
-        containerID: currentPageID, containerName: 'info-bar',
-        content: displayContent, isEventCapture: 0, borderWidth: 1, borderColor: 7
-      });
-      const listObj = ListContainerProperty.fromJson({
-        xPosition: 10, yPosition: 105, width: 556, height: 175, 
-        containerID: currentPageID + 1, containerName: 'ctrl-list',
-        itemContainer: ListItemContainerProperty.fromJson({
-          itemCount: menuNames.length, itemName: menuNames, isItemSelectBorderEn: 1
-        }),
-        isEventCapture: 1
-      });
+    const menuNames = getMenuItems();
 
-      await bridge.createStartUpPageContainer(CreateStartUpPageContainer.fromJson({
+    // Wrap properties in .fromJson to provide the required .toJson() method
+    const textObj = TextContainerProperty.fromJson({
+      xPosition: 10, yPosition: 10, width: 556, height: 90, 
+      containerID: 1, containerName: 'info-bar',
+      content: displayContent, isEventCapture: 0, borderWidth: 1, borderColor: 7
+    });
+
+    const listObj = ListContainerProperty.fromJson({
+      xPosition: 10, yPosition: 105, width: 556, height: 175, 
+      containerID: 2, containerName: 'ctrl-list',
+      itemContainer: ListItemContainerProperty.fromJson({
+        itemCount: menuNames.length, itemName: menuNames, isItemSelectBorderEn: 1
+      }),
+      isEventCapture: 1
+    });
+
+    if (isFirstRender) {
+      console.log("[Debug] createStartUpPageContainer");
+      const container = CreateStartUpPageContainer.fromJson({
         containerTotalNum: 2, textObject: [textObj], listObject: [listObj]
-      }));
+      });
+      await bridge.createStartUpPageContainer(container);
       isFirstRender = false;
+    } else if (forcePageRefresh) {
+      console.log("[Debug] rebuildPageContainer");
+      const container = RebuildPageContainer.fromJson({
+        containerTotalNum: 2, textObject: [textObj], listObject: [listObj]
+      });
+      await bridge.rebuildPageContainer(container);
     } else {
-      // Always update based on current page ID
-      await bridge.textContainerUpgrade(TextContainerUpgrade.fromJson({
-        containerID: currentPageID, containerName: 'info-bar', content: displayContent
-      }));
+      const upgrade = TextContainerUpgrade.fromJson({
+        containerID: 1, containerName: 'info-bar', content: displayContent
+      });
+      await bridge.textContainerUpgrade(upgrade);
     }
   } catch (e) { console.error("[Debug] UI Update ERROR:", e); }
 }
@@ -150,7 +156,7 @@ async function updateGlassesUI(bridge: any, forcePageRefresh = false) {
 function renderWebUI(isLoggedIn: boolean) {
   document.body.style.cssText = "margin:0; padding:0; background-color:#121212; color:white; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; display:flex; flex-direction:column; min-height:100vh; overflow:hidden;";
   if (!isLoggedIn) {
-    document.body.innerHTML = `<div style="flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center; padding: 20px;"><div style="margin-bottom: 20px; font-size: 60px;">🕶️</div><h1 style="font-size: 2.5rem; margin: 0 0 10px 0; letter-spacing: -1px;">G2 Spotify</h1><p style="color: #b3b3b3; margin-bottom: 30px; font-size: 1.1rem; max-width: 300px;">Control your music through your vision.</p><button id="login-btn" style="padding:18px 48px; background:#1DB954; color:white; border-radius:500px; border:none; font-weight:bold; font-size:1rem; cursor:pointer; transition: transform 0.2s; box-shadow: 0 10px 20px rgba(0,0,0,0.3);">CONNECT WITH SPOTIFY</button></div>`;
+    document.body.innerHTML = `<div style="flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center; padding: 20px;"><div style="margin-bottom: 20px; font-size: 60px;">🕶️</div><h1 style="font-size: 2.5rem; margin: 0 0 10px 0; letter-spacing: -1px;">G2 Spotify</h1><p style="color: #b3b3b3; margin-bottom: 30px; font-size: 1.1rem; max-width: 300px;">Control your music through your vision.</p><button id="login-btn" style="padding:18px 48px; background:#1DB954; color:white; border-radius:500px; border:none; font-weight:bold; font-size:1rem; cursor:pointer; box-shadow: 0 10px 20px rgba(0,0,0,0.3);">CONNECT WITH SPOTIFY</button></div>`;
     document.getElementById('login-btn')?.addEventListener('click', redirectToSpotify);
   } else {
     document.body.innerHTML = `<nav style="padding: 20px; background: rgba(0,0,0,0.5); display: flex; justify-content: space-between; align-items: center; backdrop-filter: blur(10px);"><div style="display:flex; align-items:center; gap:8px;"><div style="width:10px; height:10px; background:#1DB954; border-radius:50%; box-shadow: 0 0 8px #1DB954;"></div><span style="font-weight: bold; font-size: 0.9rem; letter-spacing: 1px; color: #1DB954;">G2 ACTIVE</span></div><button id="logout-btn" style="background: transparent; color: #b3b3b3; border: 1px solid #333; padding: 6px 14px; border-radius: 20px; font-size: 0.8rem; cursor: pointer;">Sign Out</button></nav><div style="flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center; padding: 20px; text-align:center;"><div id="web-track-card" style="background: linear-gradient(135deg, #282828 0%, #121212 100%); padding: 40px 30px; border-radius: 24px; border: 1px solid #333; width: 100%; max-width: 350px; box-shadow: 0 20px 40px rgba(0,0,0,0.5);"><div style="color: #1DB954; font-size: 0.8rem; font-weight: bold; margin-bottom: 20px; letter-spacing: 2px;">NOW STREAMING</div><h2 id="web-track-name" style="margin:0 0 12px 0; font-size: 1.8rem; line-height: 1.2; word-wrap: break-word;">Waiting...</h2><p id="web-track-artist" style="color: #b3b3b3; margin:0; font-size: 1.1rem;">Open Spotify app</p><div style="width: 100%; height: 4px; background: #3e3e3e; border-radius: 2px; margin-top: 30px; overflow: hidden;"><div id="web-progress-bar" style="width: 0%; height: 100%; background: #1DB954; transition: width 1s linear;"></div></div></div><p style="margin-top: 40px; color: #555; font-size: 0.8rem; max-width: 250px;">Controls active on glasses. Tap to navigate.</p></div>`;
@@ -202,7 +208,7 @@ async function startApp() {
               await fetchDevices(token!);
               await updateGlassesUI(bridge, true);
             } else if (action) {
-              fetch(`https://api.spotify.com/v1/me/player/${action}`, {
+              fetch(`https://api.spotify.com/v1/me/player/$?${action}`, {
                 method: (action === 'play' || action === 'pause') ? 'PUT' : 'POST',
                 headers: { Authorization: `Bearer ${token}` }
               });
