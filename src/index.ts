@@ -4,7 +4,6 @@ import {
   TextContainerProperty, 
   ListContainerProperty, 
   ListItemContainerProperty, 
-  TextContainerUpgrade,
   RebuildPageContainer 
 } from '@evenrealities/even_hub_sdk';
 
@@ -17,8 +16,6 @@ const SCOPES = 'user-modify-playback-state user-read-playback-state user-read-cu
 let isFirstRender = true;
 let isSubMenu = false; 
 let deviceList: any[] = [];
-let currentTextID = 1;
-let currentListID = 2;
 let trackData = {
   name: "Loading...",
   artist: "Spotify",
@@ -27,27 +24,31 @@ let trackData = {
   isPlaying: false
 };
 
-// ================= AUTH & UTILS (Kept original) =================
+// ================= AUTH UTILS =================
 
 const generateRandomString = (length: number) => {
   const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   const values = crypto.getRandomValues(new Uint8Array(length));
   return values.reduce((acc, x) => acc + possible[x % possible.length], "");
 };
+
 const sha256 = async (plain: string) => {
   const encoder = new TextEncoder();
   const data = encoder.encode(plain);
   return window.crypto.subtle.digest('SHA-256', data);
 };
+
 const base64urlencode = (a: ArrayBuffer) => {
   return btoa(String.fromCharCode.apply(null, Array.from(new Uint8Array(a))))
     .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 };
+
 const logout = () => {
   localStorage.removeItem('spotify_token');
   localStorage.removeItem('code_verifier');
   window.location.href = REDIRECT_URI;
 };
+
 async function redirectToSpotify() {
   const verifier = generateRandomString(64);
   localStorage.setItem('code_verifier', verifier);
@@ -59,6 +60,7 @@ async function redirectToSpotify() {
   });
   window.location.href = `https://accounts.spotify.com/authorize?${p.toString()}`;
 }
+
 async function exchangeCode(code: string) {
   const verifier = localStorage.getItem('code_verifier');
   if (!verifier) return null;
@@ -78,7 +80,7 @@ async function exchangeCode(code: string) {
   return null;
 }
 
-// ================= UI LOGIC =================
+// ================= UI HELPERS =================
 
 const formatTime = (ms: number) => {
   const s = Math.floor((ms / 1000) % 60);
@@ -97,73 +99,56 @@ function getMenuItems() {
   return ['PLAY', 'PAUSE', 'NEXT', 'PREV', 'DEVICES'];
 }
 
+// ================= BRIDGE LOGIC =================
+
 async function updateGlassesUI(bridge: any, forcePageRefresh = false) {
   const token = localStorage.getItem('spotify_token');
   if (!token) return;
 
-  if (trackData.isPlaying && trackData.progressMs < trackData.durationMs) {
-    trackData.progressMs += 1000;
-  }
   const timeStr = `${formatTime(trackData.progressMs)} / ${formatTime(trackData.durationMs)}`;
-  const displayContent = `\n  ${trackData.name}\n  ${trackData.artist} - ${timeStr}`;
+  const displayContent = `${trackData.name}\n${trackData.artist}\n${timeStr}`;
 
   try {
     const menuNames = getMenuItems();
 
-    if (isFirstRender || forcePageRefresh) {
-      // Force unique IDs if we are swapping pages
-      if (forcePageRefresh) {
-        currentTextID += 10;
-        currentListID += 10;
-      }
+    const textObj = TextContainerProperty.fromJson({
+      xPosition: 10, yPosition: 10, width: 550, height: 85, 
+      containerID: 1, containerName: 'text_box',
+      content: displayContent, isEventCapture: 0, borderWidth: 1, borderColor: 7
+    });
 
-      console.log(`[Debug] Building UI. TextID: ${currentTextID}, ListID: ${currentListID}`);
-      console.log("[Debug] Menu items:", menuNames);
+    const listObj = ListContainerProperty.fromJson({
+      xPosition: 10, yPosition: 100, width: 550, height: 175, 
+      containerID: 2, containerName: 'list_box',
+      itemContainer: ListItemContainerProperty.fromJson({
+        itemCount: menuNames.length, itemName: menuNames, isItemSelectBorderEn: 1
+      }),
+      isEventCapture: 1
+    });
 
-      const textObj = TextContainerProperty.fromJson({
-        xPosition: 10, yPosition: 10, width: 556, height: 90, 
-        containerID: currentTextID, containerName: 'info',
-        content: displayContent, isEventCapture: 0, borderWidth: 1, borderColor: 7
+    if (isFirstRender) {
+      console.log("[Debug] Attempting Startup...");
+      const container = CreateStartUpPageContainer.fromJson({
+        containerTotalNum: 2, textObject: [textObj], listObject: [listObj]
       });
-
-      const listObj = ListContainerProperty.fromJson({
-        xPosition: 10, yPosition: 105, width: 556, height: 175, 
-        containerID: currentListID, containerName: 'menu',
-        itemContainer: ListItemContainerProperty.fromJson({
-          itemCount: menuNames.length, itemName: menuNames, isItemSelectBorderEn: 1
-        }),
-        isEventCapture: 1
+      const res = await bridge.createStartUpPageContainer(container);
+      console.log("[Debug] Startup Result:", res);
+      if (res === 0) isFirstRender = false;
+    } else if (forcePageRefresh) {
+      console.log("[Debug] Attempting Rebuild...");
+      const container = RebuildPageContainer.fromJson({
+        containerTotalNum: 2, textObject: [textObj], listObject: [listObj]
       });
-
-      if (isFirstRender) {
-        console.log("[Debug] Calling createStartUpPageContainer");
-        const container = CreateStartUpPageContainer.fromJson({
-          containerTotalNum: 2, textObject: [textObj], listObject: [listObj]
-        });
-        const res = await bridge.createStartUpPageContainer(container);
-        console.log("[Debug] Startup Result:", res);
-        isFirstRender = false;
-      } else {
-        console.log("[Debug] Calling rebuildPageContainer");
-        const container = RebuildPageContainer.fromJson({
-          containerTotalNum: 2, textObject: [textObj], listObject: [listObj]
-        });
-        const res = await bridge.rebuildPageContainer(container);
-        console.log("[Debug] Rebuild Success:", res);
-      }
+      const res = await bridge.rebuildPageContainer(container);
+      console.log("[Debug] Rebuild Result:", res);
     } else {
-      // Periodic update for track info
-      const upgrade = TextContainerUpgrade.fromJson({
-        containerID: currentTextID, containerName: 'info', content: displayContent
+      // Update track text only (if not swapping menus)
+      await bridge.textContainerUpgrade({
+        containerID: 1, containerName: 'text_box', content: displayContent
       });
-      await bridge.textContainerUpgrade(upgrade);
     }
-  } catch (e) { 
-    console.error("[Debug] UI Exception:", e); 
-  }
+  } catch (e) { console.error("[Debug] UI Error:", e); }
 }
-
-// ================= APP FLOW =================
 
 async function startApp() {
   const params = new URLSearchParams(window.location.search);
@@ -175,104 +160,102 @@ async function startApp() {
     if (token) window.history.replaceState({}, '', REDIRECT_URI);
   }
 
-  // Basic Web UI
-  document.body.style.cssText = "background:#121212; color:white; font-family:sans-serif; text-align:center; padding:20px;";
+  // Simple Web UI
+  document.body.style.cssText = "background:#121212; color:white; font-family:sans-serif; text-align:center; padding:50px;";
   if (!token) {
-    document.body.innerHTML = `<h1>G2 Spotify</h1><button id="l-btn" style="padding:15px; background:#1DB954; color:white; border:none; border-radius:20px; font-weight:bold;">CONNECT</button>`;
-    document.getElementById('l-btn')?.addEventListener('click', redirectToSpotify);
-  } else {
-    document.body.innerHTML = `<h1>G2 ACTIVE</h1><div id="track-info">Waiting for Spotify...</div><button id="out" style="margin-top:20px; background:none; color:#555; border:1px solid #333;">Logout</button>`;
-    document.getElementById('out')?.addEventListener('click', logout);
-
-    try {
-      const bridge = await waitForEvenAppBridge();
-      console.log("[Debug] Bridge Ready");
-      
-      setInterval(() => updateGlassesUI(bridge), 1000);
-      setInterval(() => syncSpotify(token!), 5000);
-
-      bridge.onEvenHubEvent(async (e: any) => {
-        let rawData = e.jsonData;
-        if (typeof rawData === 'string') rawData = JSON.parse(rawData);
-
-        // Check if this event belongs to our active list container
-        if (rawData && rawData.containerID === currentListID) {
-          
-          // CRITICAL FIX: If index is missing/undefined, it's actually Index 0 (the first item)
-          let idx = rawData.currentSelectItemIndex;
-          if (idx === undefined || idx === null) {
-            console.log("[Debug] Index missing in listEvent - assuming Index 0 (First Item)");
-            idx = 0;
-          }
-
-          console.log(`[Debug] Tap confirmed! Index: ${idx}, isSubMenu: ${isSubMenu}`);
-          
-          if (!isSubMenu) {
-            const actions = ['play', 'pause', 'next', 'previous', 'devices'];
-            const action = actions[idx];
-            
-            if (action === 'devices') {
-              isSubMenu = true; 
-              await fetchDevices(token!);
-              // Small delay to ensure bridge is ready for the new page
-              setTimeout(() => updateGlassesUI(bridge, true), 100);
-            } else if (action) {
-              fetch(`https://api.spotify.com/v1/me/player/$/${action}`, {
-                method: (action === 'play' || action === 'pause') ? 'PUT' : 'POST',
-                headers: { Authorization: `Bearer ${token}` }
-              });
-            }
-          } else {
-            // SUB-MENU LOGIC
-            const items = getMenuItems();
-            const selectedName = items[idx];
-            console.log(`[Debug] Device Selected: ${selectedName}`);
-
-            if (selectedName === 'BACK') {
-              isSubMenu = false;
-              setTimeout(() => updateGlassesUI(bridge, true), 100);
-            } else if (idx < deviceList.length) {
-              const dId = deviceList[idx]?.id;
-              if (dId) {
-                await fetch('https://api.spotify.com/v1/me/player', {
-                  method: 'PUT',
-                  headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ device_ids: [dId], play: true })
-                });
-              }
-              isSubMenu = false;
-              setTimeout(() => updateGlassesUI(bridge, true), 100);
-            }
-          }
-        }
-      });
-    } catch (e) { console.error("[Debug] Init Error:", e); }
+    document.body.innerHTML = `<h1>G2 Spotify</h1><button id="lbtn" style="padding:20px; background:#1DB954; color:white; border-radius:30px; border:none; font-weight:bold;">CONNECT SPOTIFY</button>`;
+    document.getElementById('lbtn')?.addEventListener('click', redirectToSpotify);
+    return;
   }
+
+  document.body.innerHTML = `<h1>G2 ACTIVE</h1><p id="info">Syncing with glasses...</p><button id="obtn" style="margin-top:20px; opacity:0.5;">Logout</button>`;
+  document.getElementById('obtn')?.addEventListener('click', logout);
+
+  try {
+    const bridge = await waitForEvenAppBridge();
+    console.log("[Debug] Bridge Connected");
+
+    // Sync Spotify Data
+    setInterval(() => syncSpotify(token!), 5000);
+    // Refresh UI on glasses
+    setInterval(() => updateGlassesUI(bridge), 2000);
+
+    bridge.onEvenHubEvent(async (e: any) => {
+      // Check both locations for index data
+      const source = e.listEvent || (e.jsonData && typeof e.jsonData === 'object' ? e.jsonData : null);
+      if (!source) return;
+
+      let idx = source.currentSelectItemIndex;
+      
+      // FIX FOR IPHONE (Index 0): If we have a list event but idx is null/undefined, it's 0.
+      if (idx === undefined || idx === null) {
+        console.log("[Debug] Index 0 assumed (missing field)");
+        idx = 0;
+      }
+
+      console.log(`[Debug] Interaction at Index: ${idx}, isSubMenu: ${isSubMenu}`);
+
+      if (!isSubMenu) {
+        const action = ['play', 'pause', 'next', 'previous', 'devices'][idx];
+        if (action === 'devices') {
+          isSubMenu = true;
+          await fetchDevices(token!);
+          updateGlassesUI(bridge, true);
+        } else if (action) {
+          fetch(`https://api.spotify.com/v1/me/player/${action}`, {
+            method: (action === 'play' || action === 'pause') ? 'PUT' : 'POST',
+            headers: { Authorization: `Bearer ${token}` }
+          });
+        }
+      } else {
+        const items = getMenuItems();
+        const selected = items[idx];
+        if (selected === 'BACK') {
+          isSubMenu = false;
+        } else if (idx < deviceList.length) {
+          const dId = deviceList[idx]?.id;
+          if (dId) {
+            await fetch('https://api.spotify.com/v1/me/player', {
+              method: 'PUT',
+              headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ device_ids: [dId], play: true })
+            });
+          }
+          isSubMenu = false;
+        }
+        updateGlassesUI(bridge, true);
+      }
+    });
+  } catch (e) { console.error("[Debug] Init Failed:", e); }
 }
 
 async function fetchDevices(token: string) {
   try {
-    console.log("[Debug] Fetching Spotify Devices...");
     const res = await fetch('https://api.spotify.com/v1/me/player/devices', {
       headers: { Authorization: `Bearer ${token}` }
     });
     const data = await res.json();
     deviceList = data.devices || [];
-    console.log("[Debug] Devices found:", deviceList.length);
     return deviceList;
   } catch (e) { return []; }
 }
 
 async function syncSpotify(token: string) {
   try {
-    const res = await fetch('https://api.spotify.com/v1/me/player/currently-playing', {
+    const res = await fetch('https://api.spotify.com/v1/me/player', {
       headers: { Authorization: `Bearer ${token}` }
     });
     if (res.status === 200) {
       const data = await res.json();
       if (data.item) {
-        trackData = { name: data.item.name, artist: data.item.artists[0].name, progressMs: data.progress_ms, durationMs: data.item.duration_ms, isPlaying: data.is_playing };
-        const el = document.getElementById('track-info');
+        trackData = {
+          name: data.item.name,
+          artist: data.item.artists[0].name,
+          progressMs: data.progress_ms,
+          durationMs: data.item.duration_ms,
+          isPlaying: data.is_playing
+        };
+        const el = document.getElementById('info');
         if (el) el.innerText = `${trackData.name} - ${trackData.artist}`;
       }
     }
