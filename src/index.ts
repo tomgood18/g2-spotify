@@ -42,6 +42,7 @@ const base64urlencode = (a: ArrayBuffer) => {
 };
 
 const logout = () => {
+  console.log("DEBUG: Logging out and clearing storage.");
   localStorage.removeItem('spotify_token');
   localStorage.removeItem('code_verifier');
   window.location.href = REDIRECT_URI;
@@ -52,6 +53,7 @@ const logout = () => {
 async function redirectToSpotify() {
   const verifier = generateRandomString(64);
   localStorage.setItem('code_verifier', verifier);
+
   const hashed = await sha256(verifier);
   const challenge = base64urlencode(hashed);
 
@@ -135,39 +137,52 @@ async function updateGlassesUI(bridge: any) {
         containerID: 1, containerName: 'info-bar', content: displayContent
       }));
     }
-  } catch (e) { console.error(e); }
+  } catch (e) { console.error("DEBUG: Update Glasses UI Fail:", e); }
 }
 
 function renderWebUI(isLoggedIn: boolean) {
   document.body.style.margin = '0';
+  document.body.style.padding = '0';
   document.body.style.backgroundColor = '#121212';
   document.body.style.color = 'white';
-  document.body.style.fontFamily = 'sans-serif';
+  document.body.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
   document.body.style.display = 'flex';
   document.body.style.flexDirection = 'column';
   document.body.style.minHeight = '100vh';
+  document.body.style.overflow = 'hidden';
 
   if (!isLoggedIn) {
     document.body.innerHTML = `
       <div style="flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center; padding: 20px;">
-        <h1>G2 Spotify</h1>
-        <button id="login-btn" style="padding:15px 30px; background:#1DB954; color:white; border-radius:30px; border:none; font-weight:bold; cursor:pointer;">
-          CONNECT SPOTIFY
+        <div style="margin-bottom: 20px; font-size: 60px;">🕶️</div>
+        <h1 style="font-size: 2.5rem; margin: 0 0 10px 0; letter-spacing: -1px;">G2 Spotify</h1>
+        <p style="color: #b3b3b3; margin-bottom: 30px; font-size: 1.1rem; max-width: 300px;">Control your music through your vision.</p>
+        <button id="login-btn" style="padding:18px 48px; background:#1DB954; color:white; border-radius:500px; border:none; font-weight:bold; font-size:1rem; cursor:pointer; transition: transform 0.2s; box-shadow: 0 10px 20px rgba(0,0,0,0.3);">
+          CONNECT WITH SPOTIFY
         </button>
       </div>`;
     document.getElementById('login-btn')?.addEventListener('click', redirectToSpotify);
   } else {
     document.body.innerHTML = `
-      <nav style="padding: 20px; display: flex; justify-content: space-between;">
-        <span style="color:#1DB954">G2 ACTIVE</span>
-        <button id="logout-btn">Sign Out</button>
-      </nav>
-      <div style="flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center;">
-        <h2 id="web-track-name">Syncing...</h2>
-        <p id="web-track-artist"></p>
-        <div style="width: 200px; height: 4px; background: #333; margin-top:10px;">
-          <div id="web-progress-bar" style="width: 0%; height: 100%; background: #1DB954;"></div>
+      <nav style="padding: 20px; background: rgba(0,0,0,0.5); display: flex; justify-content: space-between; align-items: center; backdrop-filter: blur(10px);">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <div style="width:10px; height:10px; background:#1DB954; border-radius:50%; box-shadow: 0 0 8px #1DB954;"></div>
+          <span style="font-weight: bold; font-size: 0.9rem; letter-spacing: 1px; color: #1DB954;">G2 ACTIVE</span>
         </div>
+        <button id="logout-btn" style="background: transparent; color: #b3b3b3; border: 1px solid #333; padding: 6px 14px; border-radius: 20px; font-size: 0.8rem; cursor: pointer;">
+          Sign Out
+        </button>
+      </nav>
+      <div style="flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center; padding: 20px; text-align:center;">
+        <div id="web-track-card" style="background: linear-gradient(135deg, #282828 0%, #121212 100%); padding: 40px 30px; border-radius: 24px; border: 1px solid #333; width: 100%; max-width: 350px; box-shadow: 0 20px 40px rgba(0,0,0,0.5);">
+          <div style="color: #1DB954; font-size: 0.8rem; font-weight: bold; margin-bottom: 20px; letter-spacing: 2px;">NOW STREAMING</div>
+          <h2 id="web-track-name" style="margin:0 0 12px 0; font-size: 1.8rem; line-height: 1.2; word-wrap: break-word;">Waiting...</h2>
+          <p id="web-track-artist" style="color: #b3b3b3; margin:0; font-size: 1.1rem;">Open Spotify app</p>
+          <div style="width: 100%; height: 4px; background: #3e3e3e; border-radius: 2px; margin-top: 30px; overflow: hidden;">
+            <div id="web-progress-bar" style="width: 0%; height: 100%; background: #1DB954; transition: width 1s linear;"></div>
+          </div>
+        </div>
+        <p style="margin-top: 40px; color: #555; font-size: 0.8rem; max-width: 250px;">Controls active on glasses. Tap to navigate.</p>
       </div>`;
     document.getElementById('logout-btn')?.addEventListener('click', logout);
   }
@@ -175,7 +190,7 @@ function renderWebUI(isLoggedIn: boolean) {
 
 async function syncSpotify(token: string) {
   try {
-    const res = await fetch('https://api.spotify.com/v1/me/player/currently-playing', {
+    const res = await fetch('https://api.spotify.com/v1/me/player', {
       headers: { Authorization: `Bearer ${token}` }
     });
     if (res.status === 200) {
@@ -195,7 +210,7 @@ async function syncSpotify(token: string) {
         if (p) { p.style.width = `${(trackData.progressMs / trackData.durationMs) * 100}%`; }
       }
     }
-  } catch (e) { console.error(e); }
+  } catch (e) { console.error("DEBUG: Sync Error:", e); }
 }
 
 async function startApp() {
@@ -213,11 +228,14 @@ async function startApp() {
   if (token) {
     try {
       const bridge = await waitForEvenAppBridge();
+      console.log("DEBUG: Bridge initialized.");
       setInterval(() => updateGlassesUI(bridge), 1000);
       await syncSpotify(token);
       setInterval(() => syncSpotify(token!), 5000);
       
       bridge.onEvenHubEvent((e: any) => {
+        console.log("DEBUG: Event received:", JSON.stringify(e));
+        
         let index = e.listEvent?.currentSelectItemIndex;
         if (index === undefined && e.jsonData) {
             const parsed = typeof e.jsonData === 'string' ? JSON.parse(e.jsonData) : e.jsonData;
@@ -227,23 +245,32 @@ async function startApp() {
         if (typeof index === 'number') {
           const cmds = ['play', 'pause', 'next', 'previous'];
           const type = cmds[index];
+          
           if (type) {
             const isControl = (type === 'play' || type === 'pause');
             const method = isControl ? 'PUT' : 'POST';
+            const endpoint = (type === 'next' || type === 'previous') ? type : type;
+            const url = `https://api.spotify.com/v1/me/player/${endpoint}`;
             
-            // ACTUAL SPOTIFY API ENDPOINTS
-            fetch(`https://api.spotify.com/v1/me/player/${type}`, {
+            console.log(`DEBUG: Sending ${method} to ${url}`);
+
+            fetch(url, {
               method,
               headers: { 
                 'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json' 
               },
               body: isControl ? JSON.stringify({}) : null
-            }).then(() => setTimeout(() => syncSpotify(token!), 600));
+            })
+            .then(res => {
+              console.log(`DEBUG: Spotify Response (${type}):`, res.status);
+              setTimeout(() => syncSpotify(token!), 800);
+            })
+            .catch(err => console.error("DEBUG: Fetch Error:", err));
           }
         }
       });
-    } catch (e) { console.error(e); }
+    } catch (e) { console.error("DEBUG: Bridge Init Failed:", e); }
   }
 }
 
