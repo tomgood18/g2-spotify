@@ -57,8 +57,12 @@ async function redirectToSpotify() {
   const hashed = await sha256(verifier);
   const challenge = base64urlencode(hashed);
   const p = new URLSearchParams({
-    response_type: 'code', client_id: CLIENT_ID, scope: SCOPES,
-    code_challenge_method: 'S256', code_challenge: challenge, redirect_uri: REDIRECT_URI,
+    response_type: 'code',
+    client_id: CLIENT_ID,
+    scope: SCOPES,
+    code_challenge_method: 'S256',
+    code_challenge: challenge,
+    redirect_uri: REDIRECT_URI,
   });
   window.location.href = `https://accounts.spotify.com/authorize?${p.toString()}`;
 }
@@ -70,8 +74,11 @@ async function exchangeCode(code: string) {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
-      client_id: CLIENT_ID, grant_type: 'authorization_code',
-      code: code, redirect_uri: REDIRECT_URI, code_verifier: verifier
+      client_id: CLIENT_ID,
+      grant_type: 'authorization_code',
+      code: code,
+      redirect_uri: REDIRECT_URI,
+      code_verifier: verifier
     })
   });
   const data = await r.json();
@@ -90,12 +97,11 @@ const formatTime = (ms: number) => {
   return `${m}:${s < 10 ? '0' : ''}${s}`;
 };
 
-// Helper to generate the current list items based on menu state
 function getMenuItems() {
   if (isSubMenu) {
     const names = deviceList.length > 0 
       ? deviceList.map(d => d.name.toUpperCase().substring(0, 15)) 
-      : ['NO DEVICES'];
+      : ['NO DEVICES FOUND'];
     names.push('BACK');
     return names;
   }
@@ -113,10 +119,8 @@ async function updateGlassesUI(bridge: any, forceListRefresh = false) {
   const displayContent = `\n  ${trackData.name}\n  ${trackData.artist} - ${timeStr}`;
 
   try {
-    // If it's the first time OR we just switched menus, we MUST use createStartUpPageContainer
     if (isFirstRender || forceListRefresh) {
       const menuNames = getMenuItems();
-      
       const textObj = TextContainerProperty.fromJson({
         xPosition: 10, yPosition: 10, width: 556, height: 90, 
         containerID: 1, containerName: 'info-bar',
@@ -130,18 +134,16 @@ async function updateGlassesUI(bridge: any, forceListRefresh = false) {
         }),
         isEventCapture: 1
       });
-      
       await bridge.createStartUpPageContainer(CreateStartUpPageContainer.fromJson({
         containerTotalNum: 2, textObject: [textObj], listObject: [listObj]
       }));
       isFirstRender = false;
     } else {
-      // Just update the text for the track info (keeps list index stable)
       await bridge.textContainerUpgrade(TextContainerUpgrade.fromJson({
         containerID: 1, containerName: 'info-bar', content: displayContent
       }));
     }
-  } catch (e) { console.error("Update Glasses Fail:", e); }
+  } catch (e) { console.error("UI Update Error:", e); }
 }
 
 function renderWebUI(isLoggedIn: boolean) {
@@ -200,7 +202,10 @@ async function fetchDevices(token: string) {
     const data = await res.json();
     deviceList = data.devices || [];
     return deviceList;
-  } catch (e) { return []; }
+  } catch (e) { 
+    console.error("Device fetch error:", e);
+    return []; 
+  }
 }
 
 async function startApp() {
@@ -236,22 +241,19 @@ async function startApp() {
             if (type === 'devices') {
               isSubMenu = true;
               await fetchDevices(token!);
-              await updateGlassesUI(bridge, true); // Force refresh to show Device List
+              await updateGlassesUI(bridge, true);
             } else if (type) {
-              const isControl = (type === 'play' || type === 'pause');
-              const method = isControl ? 'PUT' : 'POST';
-              fetch(`https://api.spotify.com/v1/me/player/${type}`, {
+              const endpoint = type === 'play' ? 'play' : type === 'pause' ? 'pause' : type === 'next' ? 'next' : 'previous';
+              const method = (type === 'play' || type === 'pause') ? 'PUT' : 'POST';
+              fetch(`https://api.spotify.com/v1/me/player/${endpoint}`, {
                 method, 
                 headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-                body: isControl ? JSON.stringify({}) : null
+                body: method === 'PUT' ? JSON.stringify({}) : null
               });
             }
           } else {
-            // SUB-MENU LOGIC (DEVICES)
-            if (idx === deviceList.length || deviceList.length === 0) {
-              isSubMenu = false;
-              await updateGlassesUI(bridge, true); // Force refresh to show Controls
-            } else {
+            // Safety: Check if idx is valid for deviceList
+            if (idx < deviceList.length && deviceList[idx]) {
               const deviceId = deviceList[idx].id;
               await fetch('https://api.spotify.com/v1/me/player', {
                 method: 'PUT',
@@ -260,6 +262,10 @@ async function startApp() {
               });
               isSubMenu = false;
               setTimeout(() => updateGlassesUI(bridge, true), 500);
+            } else {
+              // CLICKED 'BACK' or invalid
+              isSubMenu = false;
+              await updateGlassesUI(bridge, true);
             }
           }
         }
