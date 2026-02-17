@@ -10,7 +10,8 @@ import {
 // --- CONFIG ---
 const CLIENT_ID = '0dac788532204ec9aed1b36ea9a20f0d';
 // ENSURE THIS MATCHES YOUR CURRENT TEST ENVIRONMENT (LOCAL OR GITHUB)
-const REDIRECT_URI = "https://tomgood18.github.io/g2-spotify/"; 
+// const REDIRECT_URI = "https://tomgood18.github.io/g2-spotify/"; 
+const REDIRECT_URI = window.location.origin + window.location.pathname;
 const SCOPES = 'user-modify-playback-state user-read-playback-state user-read-currently-playing';
 
 // --- STATE ---
@@ -71,7 +72,13 @@ async function redirectToSpotify() {
 
 async function exchangeCode(code: string) {
   const verifier = localStorage.getItem('code_verifier');
-  if (!verifier) return null;
+  // Add a log here so you can see it on your phone/browser console
+  console.log("Production Verifier Check:", verifier); 
+  
+  if (!verifier) {
+    console.error("No verifier found in storage!");
+    return null;
+  }
 
   const r = await fetch('https://accounts.spotify.com/api/token', {
     method: 'POST',
