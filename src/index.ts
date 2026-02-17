@@ -99,6 +99,44 @@ function getMenuItems() {
   return ['PLAY', 'PAUSE', 'NEXT', 'PREV', 'DEVICES'];
 }
 
+// ================= WEB UI RENDERER =================
+
+function renderWebUI(isLoggedIn: boolean) {
+  document.body.style.cssText = "margin:0; padding:0; background-color:#121212; color:white; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; display:flex; flex-direction:column; min-height:100vh; overflow:hidden;";
+  
+  if (!isLoggedIn) {
+    document.body.innerHTML = `
+      <div style="flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center; padding: 20px;">
+        <div style="margin-bottom: 20px; font-size: 60px;">🕶️</div>
+        <h1 style="font-size: 2.5rem; margin: 0 0 10px 0; letter-spacing: -1px;">G2 Spotify</h1>
+        <p style="color: #b3b3b3; margin-bottom: 30px; font-size: 1.1rem; max-width: 300px;">Control your music through your vision.</p>
+        <button id="login-btn" style="padding:18px 48px; background:#1DB954; color:white; border-radius:500px; border:none; font-weight:bold; font-size:1rem; cursor:pointer; box-shadow: 0 10px 20px rgba(0,0,0,0.3);">CONNECT WITH SPOTIFY</button>
+      </div>`;
+    document.getElementById('login-btn')?.addEventListener('click', redirectToSpotify);
+  } else {
+    document.body.innerHTML = `
+      <nav style="padding: 20px; background: rgba(0,0,0,0.5); display: flex; justify-content: space-between; align-items: center; backdrop-filter: blur(10px);">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <div style="width:10px; height:10px; background:#1DB954; border-radius:50%; box-shadow: 0 0 8px #1DB954;"></div>
+          <span style="font-weight: bold; font-size: 0.9rem; letter-spacing: 1px; color: #1DB954;">G2 ACTIVE</span>
+        </div>
+        <button id="logout-btn" style="background: transparent; color: #b3b3b3; border: 1px solid #333; padding: 6px 14px; border-radius: 20px; font-size: 0.8rem; cursor: pointer;">Sign Out</button>
+      </nav>
+      <div style="flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center; padding: 20px; text-align:center;">
+        <div id="web-track-card" style="background: linear-gradient(135deg, #282828 0%, #121212 100%); padding: 40px 30px; border-radius: 24px; border: 1px solid #333; width: 100%; max-width: 350px; box-shadow: 0 20px 40px rgba(0,0,0,0.5);">
+          <div style="color: #1DB954; font-size: 0.8rem; font-weight: bold; margin-bottom: 20px; letter-spacing: 2px;">NOW STREAMING</div>
+          <h2 id="web-track-name" style="margin:0 0 12px 0; font-size: 1.8rem; line-height: 1.2; word-wrap: break-word;">${trackData.name}</h2>
+          <p id="web-track-artist" style="color: #b3b3b3; margin:0; font-size: 1.1rem;">${trackData.artist}</p>
+          <div style="width: 100%; height: 4px; background: #3e3e3e; border-radius: 2px; margin-top: 30px; overflow: hidden;">
+            <div id="web-progress-bar" style="width: 0%; height: 100%; background: #1DB954; transition: width 1s linear;"></div>
+          </div>
+        </div>
+        <p style="margin-top: 40px; color: #555; font-size: 0.8rem; max-width: 250px;">Controls active on glasses. Tap to navigate.</p>
+      </div>`;
+    document.getElementById('logout-btn')?.addEventListener('click', logout);
+  }
+}
+
 // ================= BRIDGE LOGIC =================
 
 async function updateGlassesUI(bridge: any, forcePageRefresh = false) {
@@ -127,22 +165,17 @@ async function updateGlassesUI(bridge: any, forcePageRefresh = false) {
     });
 
     if (isFirstRender) {
-      console.log("[Debug] Attempting Startup...");
       const container = CreateStartUpPageContainer.fromJson({
         containerTotalNum: 2, textObject: [textObj], listObject: [listObj]
       });
       const res = await bridge.createStartUpPageContainer(container);
-      console.log("[Debug] Startup Result:", res);
       if (res === 0) isFirstRender = false;
     } else if (forcePageRefresh) {
-      console.log("[Debug] Attempting Rebuild...");
       const container = RebuildPageContainer.fromJson({
         containerTotalNum: 2, textObject: [textObj], listObject: [listObj]
       });
-      const res = await bridge.rebuildPageContainer(container);
-      console.log("[Debug] Rebuild Result:", res);
+      await bridge.rebuildPageContainer(container);
     } else {
-      // Update track text only (if not swapping menus)
       await bridge.textContainerUpgrade({
         containerID: 1, containerName: 'text_box', content: displayContent
       });
@@ -160,73 +193,55 @@ async function startApp() {
     if (token) window.history.replaceState({}, '', REDIRECT_URI);
   }
 
-  // Simple Web UI
-  document.body.style.cssText = "background:#121212; color:white; font-family:sans-serif; text-align:center; padding:50px;";
-  if (!token) {
-    document.body.innerHTML = `<h1>G2 Spotify</h1><button id="lbtn" style="padding:20px; background:#1DB954; color:white; border-radius:30px; border:none; font-weight:bold;">CONNECT SPOTIFY</button>`;
-    document.getElementById('lbtn')?.addEventListener('click', redirectToSpotify);
-    return;
-  }
+  renderWebUI(!!token);
 
-  document.body.innerHTML = `<h1>G2 ACTIVE</h1><p id="info">Syncing with glasses...</p><button id="obtn" style="margin-top:20px; opacity:0.5;">Logout</button>`;
-  document.getElementById('obtn')?.addEventListener('click', logout);
-
-  try {
-    const bridge = await waitForEvenAppBridge();
-    console.log("[Debug] Bridge Connected");
-
-    // Sync Spotify Data
-    setInterval(() => syncSpotify(token!), 5000);
-    // Refresh UI on glasses
-    setInterval(() => updateGlassesUI(bridge), 2000);
-
-    bridge.onEvenHubEvent(async (e: any) => {
-      // Check both locations for index data
-      const source = e.listEvent || (e.jsonData && typeof e.jsonData === 'object' ? e.jsonData : null);
-      if (!source) return;
-
-      let idx = source.currentSelectItemIndex;
+  if (token) {
+    try {
+      const bridge = await waitForEvenAppBridge();
       
-      // FIX FOR IPHONE (Index 0): If we have a list event but idx is null/undefined, it's 0.
-      if (idx === undefined || idx === null) {
-        console.log("[Debug] Index 0 assumed (missing field)");
-        idx = 0;
-      }
+      setInterval(() => syncSpotify(token!), 5000);
+      setInterval(() => updateGlassesUI(bridge), 2000);
 
-      console.log(`[Debug] Interaction at Index: ${idx}, isSubMenu: ${isSubMenu}`);
+      bridge.onEvenHubEvent(async (e: any) => {
+        const source = e.listEvent || (e.jsonData && typeof e.jsonData === 'object' ? e.jsonData : null);
+        if (!source) return;
 
-      if (!isSubMenu) {
-        const action = ['play', 'pause', 'next', 'previous', 'devices'][idx];
-        if (action === 'devices') {
-          isSubMenu = true;
-          await fetchDevices(token!);
-          updateGlassesUI(bridge, true);
-        } else if (action) {
-          fetch(`https://api.spotify.com/v1/me/player/${action}`, {
-            method: (action === 'play' || action === 'pause') ? 'PUT' : 'POST',
-            headers: { Authorization: `Bearer ${token}` }
-          });
-        }
-      } else {
-        const items = getMenuItems();
-        const selected = items[idx];
-        if (selected === 'BACK') {
-          isSubMenu = false;
-        } else if (idx < deviceList.length) {
-          const dId = deviceList[idx]?.id;
-          if (dId) {
-            await fetch('https://api.spotify.com/v1/me/player', {
-              method: 'PUT',
-              headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-              body: JSON.stringify({ device_ids: [dId], play: true })
+        let idx = source.currentSelectItemIndex;
+        if (idx === undefined || idx === null) idx = 0; // Fix for Index 0
+
+        if (!isSubMenu) {
+          const action = ['play', 'pause', 'next', 'previous', 'devices'][idx];
+          if (action === 'devices') {
+            isSubMenu = true;
+            await fetchDevices(token!);
+            updateGlassesUI(bridge, true);
+          } else if (action) {
+            fetch(`https://api.spotify.com/v1/me/player/${action === 'play' || action === 'pause' ? action : action}`, {
+              method: (action === 'play' || action === 'pause') ? 'PUT' : 'POST',
+              headers: { Authorization: `Bearer ${token}` }
             });
           }
-          isSubMenu = false;
+        } else {
+          const items = getMenuItems();
+          const selected = items[idx];
+          if (selected === 'BACK') {
+            isSubMenu = false;
+          } else if (idx < deviceList.length) {
+            const dId = deviceList[idx]?.id;
+            if (dId) {
+              await fetch('https://api.spotify.com/v1/me/player', {
+                method: 'PUT',
+                headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ device_ids: [dId], play: true })
+              });
+            }
+            isSubMenu = false;
+          }
+          updateGlassesUI(bridge, true);
         }
-        updateGlassesUI(bridge, true);
-      }
-    });
-  } catch (e) { console.error("[Debug] Init Failed:", e); }
+      });
+    } catch (e) { console.error(e); }
+  }
 }
 
 async function fetchDevices(token: string) {
@@ -242,7 +257,7 @@ async function fetchDevices(token: string) {
 
 async function syncSpotify(token: string) {
   try {
-    const res = await fetch('https://api.spotify.com/v1/me/player', {
+    const res = await fetch('https://api.spotify.com/v1/me/player/currently-playing', {
       headers: { Authorization: `Bearer ${token}` }
     });
     if (res.status === 200) {
@@ -255,8 +270,18 @@ async function syncSpotify(token: string) {
           durationMs: data.item.duration_ms,
           isPlaying: data.is_playing
         };
-        const el = document.getElementById('info');
-        if (el) el.innerText = `${trackData.name} - ${trackData.artist}`;
+        
+        // Update Web UI Elements
+        const nameEl = document.getElementById('web-track-name');
+        const artistEl = document.getElementById('web-track-artist');
+        const progressEl = document.getElementById('web-progress-bar');
+        
+        if (nameEl) nameEl.innerText = trackData.name;
+        if (artistEl) artistEl.innerText = trackData.artist;
+        if (progressEl) {
+          const percent = (trackData.progressMs / trackData.durationMs) * 100;
+          progressEl.style.width = `${percent}%`;
+        }
       }
     }
   } catch (e) {}
