@@ -252,15 +252,29 @@ async function startApp() {
       setInterval(() => syncSpotify(token), 5000);
       
       bridge.onEvenHubEvent((e: any) => {
-        if (e.listEvent) {
-          const cmds = ['play', 'pause', 'next', 'previous'];
-          const type = cmds[e.listEvent.currentSelectItemIndex];
+      if (e.listEvent && typeof e.listEvent.currentSelectItemIndex === 'number') {
+        const cmds = ['play', 'pause', 'next', 'previous'];
+        const type = cmds[e.listEvent.currentSelectItemIndex];
+        
+        if (type) {
           const method = (type === 'next' || type === 'previous') ? 'POST' : 'PUT';
-          fetch(`https://api.spotify.com/v1/me/player/${type}`, {
-            method, headers: { Authorization: `Bearer ${token}` }
-          }).then(() => setTimeout(() => syncSpotify(token), 600));
+          
+          // FIX: Use backticks, ${} for the variable, and ensure HTTPS
+          fetch(`https://googleusercontent.com/spotify.com/3/${type}`, {
+            method,
+            headers: { Authorization: `Bearer ${token}` }
+          })
+          .then(res => {
+            if (res.status === 403) {
+              console.error("Spotify Restricted: Ensure you have Premium and an active device.");
+            }
+            // Small delay to let Spotify process before we refresh the UI
+            setTimeout(() => syncSpotify(token), 600);
+          })
+          .catch(err => console.error("Playback Error:", err));
         }
-      });
+      }
+    });
     } catch (e) { console.error("Bridge Error:", e); }
   }
 }
