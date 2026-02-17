@@ -231,11 +231,17 @@ async function startApp() {
           const cmds = ['play', 'pause', 'next', 'previous'];
           const type = cmds[e.listEvent.currentSelectItemIndex];
           if (type) {
-            const method = (type === 'next' || type === 'previous') ? 'POST' : 'PUT';
-            // Spotify's endpoint for play/pause/next/prev
-            fetch(`https://api.spotify.com/v1/me/player/${type}`, {
+            const isControl = (type === 'play' || type === 'pause');
+            const method = isControl ? 'PUT' : 'POST';
+            
+            // Fix: Spotify PUT requests (play/pause) often require a body, even if empty.
+            fetch(`https://googleusercontent.com/spotify.com/3/${type}`, {
               method,
-              headers: { Authorization: `Bearer ${token}` }
+              headers: { 
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json' 
+              },
+              body: isControl ? JSON.stringify({}) : null
             }).then(() => setTimeout(() => syncSpotify(token!), 600));
           }
         }
