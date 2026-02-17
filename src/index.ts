@@ -102,36 +102,45 @@ function getMenuItems() {
 // ================= WEB UI RENDERER =================
 
 function renderWebUI(isLoggedIn: boolean) {
-  document.body.style.cssText = "margin:0; padding:0; background-color:#121212; color:white; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; display:flex; flex-direction:column; min-height:100vh; overflow:hidden;";
+  document.body.style.cssText = "margin:0; padding:0; background-color:#121212; color:white; font-family:'Circular Sp', Helvetica, Arial, sans-serif; display:flex; flex-direction:column; min-height:100vh; overflow:hidden;";
   
   if (!isLoggedIn) {
     document.body.innerHTML = `
       <div style="flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center; padding: 20px;">
         <div style="margin-bottom: 20px; font-size: 60px;">🕶️</div>
-        <h1 style="font-size: 2.5rem; margin: 0 0 10px 0; letter-spacing: -1px;">G2 Spotify</h1>
-        <p style="color: #b3b3b3; margin-bottom: 30px; font-size: 1.1rem; max-width: 300px;">Control your music through your vision.</p>
-        <button id="login-btn" style="padding:18px 48px; background:#1DB954; color:white; border-radius:500px; border:none; font-weight:bold; font-size:1rem; cursor:pointer; box-shadow: 0 10px 20px rgba(0,0,0,0.3);">CONNECT WITH SPOTIFY</button>
+        <h1 style="font-size: 3rem; margin: 0 0 10px 0; letter-spacing: -2px;">G2 Spotify</h1>
+        <p style="color: #b3b3b3; margin-bottom: 30px; font-size: 1.2rem; max-width: 300px;">Control your music through your vision.</p>
+        <button id="login-btn" style="padding:18px 48px; background:#1DB954; color:white; border-radius:500px; border:none; font-weight:bold; font-size:1rem; cursor:pointer; transform: scale(1); transition: 0.2s;">CONNECT WITH SPOTIFY</button>
       </div>`;
     document.getElementById('login-btn')?.addEventListener('click', redirectToSpotify);
   } else {
     document.body.innerHTML = `
-      <nav style="padding: 20px; background: rgba(0,0,0,0.5); display: flex; justify-content: space-between; align-items: center; backdrop-filter: blur(10px);">
-        <div style="display:flex; align-items:center; gap:8px;">
-          <div style="width:10px; height:10px; background:#1DB954; border-radius:50%; box-shadow: 0 0 8px #1DB954;"></div>
-          <span style="font-weight: bold; font-size: 0.9rem; letter-spacing: 1px; color: #1DB954;">G2 ACTIVE</span>
+      <nav style="padding: 20px 40px; background: rgba(0,0,0,0.8); display: flex; justify-content: space-between; align-items: center; backdrop-filter: blur(10px); border-bottom: 1px solid #282828;">
+        <div style="display:flex; align-items:center; gap:12px;">
+          <div style="width:12px; height:12px; background:#1DB954; border-radius:50%; box-shadow: 0 0 12px #1DB954;"></div>
+          <span style="font-weight: bold; font-size: 0.9rem; letter-spacing: 1.5px; color: #1DB954;">G2 CONNECTED</span>
         </div>
-        <button id="logout-btn" style="background: transparent; color: #b3b3b3; border: 1px solid #333; padding: 6px 14px; border-radius: 20px; font-size: 0.8rem; cursor: pointer;">Sign Out</button>
+        <button id="logout-btn" style="background: transparent; color: #b3b3b3; border: 1px solid #535353; padding: 8px 20px; border-radius: 20px; font-size: 0.8rem; cursor: pointer; font-weight:bold;">LOGOUT</button>
       </nav>
-      <div style="flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center; padding: 20px; text-align:center;">
-        <div id="web-track-card" style="background: linear-gradient(135deg, #282828 0%, #121212 100%); padding: 40px 30px; border-radius: 24px; border: 1px solid #333; width: 100%; max-width: 350px; box-shadow: 0 20px 40px rgba(0,0,0,0.5);">
-          <div style="color: #1DB954; font-size: 0.8rem; font-weight: bold; margin-bottom: 20px; letter-spacing: 2px;">NOW STREAMING</div>
-          <h2 id="web-track-name" style="margin:0 0 12px 0; font-size: 1.8rem; line-height: 1.2; word-wrap: break-word;">${trackData.name}</h2>
-          <p id="web-track-artist" style="color: #b3b3b3; margin:0; font-size: 1.1rem;">${trackData.artist}</p>
-          <div style="width: 100%; height: 4px; background: #3e3e3e; border-radius: 2px; margin-top: 30px; overflow: hidden;">
-            <div id="web-progress-bar" style="width: 0%; height: 100%; background: #1DB954; transition: width 1s linear;"></div>
+      <div style="flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center; padding: 20px;">
+        <div id="web-track-card" style="background: #181818; padding: 40px; border-radius: 12px; width: 100%; max-width: 400px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); border: 1px solid #282828;">
+          <div style="color: #b3b3b3; font-size: 0.75rem; font-weight: bold; margin-bottom: 24px; letter-spacing: 2px;">CURRENTLY PLAYING</div>
+          <h2 id="web-track-name" style="margin:0 0 8px 0; font-size: 2.2rem; line-height: 1.1; letter-spacing: -1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${trackData.name}</h2>
+          <p id="web-track-artist" style="color: #1DB954; margin:0; font-size: 1.2rem; font-weight: 500;">${trackData.artist}</p>
+          <div style="margin-top: 40px;">
+             <div style="width: 100%; height: 4px; background: #4f4f4f; border-radius: 2px; overflow: hidden;">
+                <div id="web-progress-bar" style="width: 0%; height: 100%; background: #1DB954; transition: width 1s linear;"></div>
+             </div>
+             <div style="display: flex; justify-content: space-between; color: #b3b3b3; font-size: 0.75rem; margin-top: 8px; font-variant-numeric: tabular-nums;">
+                <span id="web-progress-time">0:00</span>
+                <span id="web-duration-time">0:00</span>
+             </div>
           </div>
         </div>
-        <p style="margin-top: 40px; color: #555; font-size: 0.8rem; max-width: 250px;">Controls active on glasses. Tap to navigate.</p>
+        <div style="margin-top: 40px; display: flex; align-items: center; gap: 10px; color: #535353; font-size: 0.85rem; font-weight: 500;">
+           <span>GLASSES CONTROLS ACTIVE</span>
+           <div style="display:flex; gap:4px;"><div style="width:4px; height:4px; background:#535353; border-radius:50%;"></div><div style="width:4px; height:4px; background:#535353; border-radius:50%;"></div><div style="width:4px; height:4px; background:#535353; border-radius:50%;"></div></div>
+        </div>
       </div>`;
     document.getElementById('logout-btn')?.addEventListener('click', logout);
   }
@@ -144,7 +153,9 @@ async function updateGlassesUI(bridge: any, forcePageRefresh = false) {
   if (!token) return;
 
   const timeStr = `${formatTime(trackData.progressMs)} / ${formatTime(trackData.durationMs)}`;
-  const displayContent = `${trackData.name}\n${trackData.artist}\n${timeStr}`;
+  
+  // ADDED PADDING: We use "  " (two spaces) before each line to create left-side padding inside the box
+  const displayContent = `  ${trackData.name}\n  ${trackData.artist}\n  ${timeStr}`;
 
   try {
     const menuNames = getMenuItems();
@@ -207,7 +218,7 @@ async function startApp() {
         if (!source) return;
 
         let idx = source.currentSelectItemIndex;
-        if (idx === undefined || idx === null) idx = 0; // Fix for Index 0
+        if (idx === undefined || idx === null) idx = 0; 
 
         if (!isSubMenu) {
           const action = ['play', 'pause', 'next', 'previous', 'devices'][idx];
@@ -257,7 +268,7 @@ async function fetchDevices(token: string) {
 
 async function syncSpotify(token: string) {
   try {
-    const res = await fetch('https://api.spotify.com/v1/me/player/currently-playing', {
+    const res = await fetch('https://api.spotify.com/v1/me/player', {
       headers: { Authorization: `Bearer ${token}` }
     });
     if (res.status === 200) {
@@ -275,9 +286,13 @@ async function syncSpotify(token: string) {
         const nameEl = document.getElementById('web-track-name');
         const artistEl = document.getElementById('web-track-artist');
         const progressEl = document.getElementById('web-progress-bar');
+        const progTimeEl = document.getElementById('web-progress-time');
+        const durTimeEl = document.getElementById('web-duration-time');
         
         if (nameEl) nameEl.innerText = trackData.name;
         if (artistEl) artistEl.innerText = trackData.artist;
+        if (progTimeEl) progTimeEl.innerText = formatTime(trackData.progressMs);
+        if (durTimeEl) durTimeEl.innerText = formatTime(trackData.durationMs);
         if (progressEl) {
           const percent = (trackData.progressMs / trackData.durationMs) * 100;
           progressEl.style.width = `${percent}%`;
