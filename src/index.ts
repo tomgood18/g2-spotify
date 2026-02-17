@@ -148,6 +148,8 @@ async function updateGlassesUI(bridge: any) {
   } catch (e) { console.error(e); }
 }
 
+// ================= WEB UI =================
+
 function renderWebUI(isLoggedIn: boolean) {
   // 1. Reset and Style Body
   document.body.style.margin = '0';
@@ -221,17 +223,7 @@ async function syncSpotify(token: string) {
         };
         const n = document.getElementById('web-track-name');
         const a = document.getElementById('web-track-artist');
-        if (n && a) { 
-          n.innerText = trackData.name; 
-          a.innerText = trackData.artist; 
-          
-          // Update the progress bar
-          const progressBar = document.getElementById('web-progress-bar');
-          if (progressBar) {
-            const percent = (trackData.progressMs / trackData.durationMs) * 100;
-            progressBar.style.width = `${percent}%`;
-          }
-        }
+        if (n && a) { n.innerText = trackData.name; a.innerText = trackData.artist; }
       }
     }
   } catch (e) { console.error(e); }
