@@ -222,26 +222,33 @@ async function startApp() {
   if (token) {
     try {
       const bridge = await waitForEvenAppBridge();
+      
+      // Update glasses UI every second
       setInterval(() => updateGlassesUI(bridge), 1000);
+      
+      // Initial Spotify Sync
       await syncSpotify(token);
       setInterval(() => syncSpotify(token!), 5000);
       
       bridge.onEvenHubEvent((e: any) => {
-        console.log("Full Event Data:", JSON.stringify(e));
+        console.log("Incoming Event:", e);
 
-        // The simulator sometimes hides the index inside the listEvent or a raw property
-        const listEvent = e.listEvent;
-        if (!listEvent) return;
+        // FALLBACK: If listEvent index is missing, try to parse jsonData
+        let selectedIndex = e.listEvent?.currentSelectItemIndex;
+        
+        // If the simulator is being difficult, check the jsonData string
+        if (selectedIndex === undefined && e.jsonData) {
+          const parsed = typeof e.jsonData === 'string' ? JSON.parse(e.jsonData) : e.jsonData;
+          selectedIndex = parsed.currentSelectItemIndex;
+        }
 
-        // Try multiple ways to get the index (SDK version differences)
-        const selectedIndex = listEvent.currentSelectItemIndex ?? e.currentSelectItemIndex;
-
-        if (typeof selectedIndex !== 'undefined' && selectedIndex !== null) {
+        // Only proceed if we have a valid number
+        if (typeof selectedIndex === 'number') {
           const cmds = ['play', 'pause', 'next', 'previous'];
           const type = cmds[selectedIndex];
           
           if (type) {
-            console.log(`Executing Spotify Command: ${type}`);
+            console.log("Confirmed Selection:", type);
             const isControl = (type === 'play' || type === 'pause');
             const method = isControl ? 'PUT' : 'POST';
             
@@ -253,17 +260,18 @@ async function startApp() {
               },
               body: isControl ? JSON.stringify({}) : null
             })
-            .then(res => {
-              console.log(`Spotify Response: ${res.status}`);
-              setTimeout(() => syncSpotify(token!), 600);
+            .then(() => {
+              console.log(`Success: ${type}`);
+              // Wait for Spotify to update, then force a sync
+              setTimeout(() => syncSpotify(token!), 800);
             })
-            .catch(err => console.error("Playback Fetch Error:", err));
+            .catch(err => console.error("Spotify Fetch Error:", err));
           }
-        } else {
-          console.warn("Event received but index was undefined. Check SDK version.");
         }
       });
-    } catch (e) { console.error("Bridge Error:", e); }
+    } catch (e) { 
+      console.error("Bridge Connection Error:", e); 
+    }
   }
 }
 
