@@ -16,6 +16,7 @@ const SCOPES = 'user-modify-playback-state user-read-playback-state user-read-cu
 let isFirstRender = true;
 let isSubMenu = false; 
 let deviceList: any[] = [];
+let currentPageID = 1; // Used to force refresh by incrementing IDs
 let trackData = {
   name: "Loading...",
   artist: "Spotify",
@@ -101,7 +102,7 @@ function getMenuItems() {
   return ['PLAY', 'PAUSE', 'NEXT', 'PREV', 'DEVICES'];
 }
 
-async function updateGlassesUI(bridge: any, forceListRefresh = false) {
+async function updateGlassesUI(bridge: any, forcePageRefresh = false) {
   const token = localStorage.getItem('spotify_token');
   if (!token) return;
 
@@ -112,33 +113,35 @@ async function updateGlassesUI(bridge: any, forceListRefresh = false) {
   const displayContent = `\n  ${trackData.name}\n  ${trackData.artist} - ${timeStr}`;
 
   try {
-    if (isFirstRender || forceListRefresh) {
-      console.log("[Debug] Deploying NEW container. SubMenu:", isSubMenu);
+    if (isFirstRender || forcePageRefresh) {
+      // Increment ID to force the bridge to recognize a new layout
+      if (forcePageRefresh) currentPageID += 2; 
+      
+      console.log(`[Debug] Creating Page with IDs: ${currentPageID}, ${currentPageID + 1}`);
       const menuNames = getMenuItems();
-      console.log("[Debug] Menu items being sent:", menuNames);
       
       const textObj = TextContainerProperty.fromJson({
         xPosition: 10, yPosition: 10, width: 556, height: 90, 
-        containerID: 1, containerName: 'info-bar',
+        containerID: currentPageID, containerName: 'info-bar',
         content: displayContent, isEventCapture: 0, borderWidth: 1, borderColor: 7
       });
       const listObj = ListContainerProperty.fromJson({
         xPosition: 10, yPosition: 105, width: 556, height: 175, 
-        containerID: 2, containerName: 'ctrl-list',
+        containerID: currentPageID + 1, containerName: 'ctrl-list',
         itemContainer: ListItemContainerProperty.fromJson({
           itemCount: menuNames.length, itemName: menuNames, isItemSelectBorderEn: 1
         }),
         isEventCapture: 1
       });
 
-      const result = await bridge.createStartUpPageContainer(CreateStartUpPageContainer.fromJson({
+      await bridge.createStartUpPageContainer(CreateStartUpPageContainer.fromJson({
         containerTotalNum: 2, textObject: [textObj], listObject: [listObj]
       }));
-      console.log("[Debug] bridge.createStartUpPageContainer result:", result);
       isFirstRender = false;
     } else {
+      // Always update based on current page ID
       await bridge.textContainerUpgrade(TextContainerUpgrade.fromJson({
-        containerID: 1, containerName: 'info-bar', content: displayContent
+        containerID: currentPageID, containerName: 'info-bar', content: displayContent
       }));
     }
   } catch (e) { console.error("[Debug] UI Update ERROR:", e); }
@@ -157,18 +160,13 @@ function renderWebUI(isLoggedIn: boolean) {
 
 async function fetchDevices(token: string) {
   try {
-    console.log("[Debug] Fetching devices...");
     const res = await fetch('https://api.spotify.com/v1/me/player/devices', {
       headers: { Authorization: `Bearer ${token}` }
     });
     const data = await res.json();
     deviceList = data.devices || [];
-    console.log("[Debug] Devices found:", deviceList.length);
     return deviceList;
-  } catch (e) { 
-    console.error("[Debug] Device Fetch Error:", e);
-    return []; 
-  }
+  } catch (e) { return []; }
 }
 
 async function startApp() {
@@ -196,32 +194,22 @@ async function startApp() {
           idx = parsed.currentSelectItemIndex;
         }
 
-        console.log("[Debug] Tap Event Index:", idx, "Current Menu:", isSubMenu ? "Sub" : "Main");
-
         if (typeof idx === 'number') {
           if (!isSubMenu) {
-            const cmds = ['play', 'pause', 'next', 'previous', 'devices'];
-            const action = cmds[idx];
-            console.log("[Debug] Main Menu Action:", action);
-
+            const action = ['play', 'pause', 'next', 'previous', 'devices'][idx];
             if (action === 'devices') {
               isSubMenu = true; 
               await fetchDevices(token!);
               await updateGlassesUI(bridge, true);
             } else if (action) {
-              const method = (action === 'play' || action === 'pause') ? 'PUT' : 'POST';
               fetch(`https://api.spotify.com/v1/me/player/${action}`, {
-                method, headers: { Authorization: `Bearer ${token}` }
+                method: (action === 'play' || action === 'pause') ? 'PUT' : 'POST',
+                headers: { Authorization: `Bearer ${token}` }
               });
             }
           } else {
-            console.log("[Debug] Sub Menu Clicked at Index:", idx);
-            if (idx >= deviceList.length) {
-              console.log("[Debug] BACK selected");
-              isSubMenu = false;
-            } else {
+            if (idx < deviceList.length) {
               const dId = deviceList[idx]?.id;
-              console.log("[Debug] Device Selected ID:", dId);
               if (dId) {
                 await fetch('https://api.spotify.com/v1/me/player', {
                   method: 'PUT',
@@ -229,13 +217,13 @@ async function startApp() {
                   body: JSON.stringify({ device_ids: [dId], play: true })
                 });
               }
-              isSubMenu = false;
             }
+            isSubMenu = false;
             await updateGlassesUI(bridge, true);
           }
         }
       });
-    } catch (e) { console.error("[Debug] Bridge Init Error:", e); }
+    } catch (e) { console.error(e); }
   }
 }
 
