@@ -100,8 +100,8 @@ const formatTime = (ms: number) => {
 function getMenuItems() {
   if (isSubMenu) {
     const names = deviceList.length > 0 
-      ? deviceList.map(d => d.name.toUpperCase().substring(0, 15)) 
-      : ['NO DEVICES FOUND'];
+      ? deviceList.map(d => (d.name || "Unknown").toUpperCase().substring(0, 15)) 
+      : ['NO DEVICES'];
     names.push('BACK');
     return names;
   }
@@ -147,16 +147,11 @@ async function updateGlassesUI(bridge: any, forceListRefresh = false) {
 }
 
 function renderWebUI(isLoggedIn: boolean) {
-  // FULL UI RESTORATION
-  document.body.style.margin = '0';
-  document.body.style.padding = '0';
-  document.body.style.backgroundColor = '#121212';
-  document.body.style.color = 'white';
-  document.body.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
-  document.body.style.display = 'flex';
-  document.body.style.flexDirection = 'column';
-  document.body.style.minHeight = '100vh';
-  document.body.style.overflow = 'hidden';
+  document.body.style.cssText = `
+    margin: 0; padding: 0; background-color: #121212; color: white;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    display: flex; flex-direction: column; min-height: 100vh; overflow: hidden;
+  `;
 
   if (!isLoggedIn) {
     document.body.innerHTML = `
@@ -164,7 +159,7 @@ function renderWebUI(isLoggedIn: boolean) {
         <div style="margin-bottom: 20px; font-size: 60px;">🕶️</div>
         <h1 style="font-size: 2.5rem; margin: 0 0 10px 0; letter-spacing: -1px;">G2 Spotify</h1>
         <p style="color: #b3b3b3; margin-bottom: 30px; font-size: 1.1rem; max-width: 300px;">Control your music through your vision.</p>
-        <button id="login-btn" style="padding:18px 48px; background:#1DB954; color:white; border-radius:500px; border:none; font-weight:bold; font-size:1rem; cursor:pointer; transition: transform 0.2s; box-shadow: 0 10px 20px rgba(0,0,0,0.3);">
+        <button id="login-btn" style="padding:18px 48px; background:#1DB954; color:white; border-radius:500px; border:none; font-weight:bold; font-size:1rem; cursor:pointer; box-shadow: 0 10px 20px rgba(0,0,0,0.3);">
           CONNECT WITH SPOTIFY
         </button>
       </div>`;
@@ -189,7 +184,6 @@ function renderWebUI(isLoggedIn: boolean) {
             <div id="web-progress-bar" style="width: 0%; height: 100%; background: #1DB954; transition: width 1s linear;"></div>
           </div>
         </div>
-        <p style="margin-top: 40px; color: #555; font-size: 0.8rem; max-width: 250px;">Controls active on glasses. Tap to navigate.</p>
       </div>`;
     document.getElementById('logout-btn')?.addEventListener('click', logout);
   }
@@ -203,25 +197,23 @@ async function fetchDevices(token: string) {
     const data = await res.json();
     deviceList = data.devices || [];
     return deviceList;
-  } catch (e) { 
-    return []; 
-  }
+  } catch (e) { return []; }
 }
 
 async function startApp() {
-  const params = new URLSearchParams(window.location.search);
-  const code = params.get('code');
-  let token = localStorage.getItem('spotify_token');
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    let token = localStorage.getItem('spotify_token');
 
-  if (code && !token) {
-    token = await exchangeCode(code);
-    if (token) window.history.replaceState({}, '', REDIRECT_URI);
-  }
+    if (code && !token) {
+      token = await exchangeCode(code);
+      if (token) window.history.replaceState({}, '', REDIRECT_URI);
+    }
 
-  renderWebUI(!!token);
+    renderWebUI(!!token);
 
-  if (token) {
-    try {
+    if (token) {
       const bridge = await waitForEvenAppBridge();
       setInterval(() => updateGlassesUI(bridge), 1000);
       setInterval(() => syncSpotify(token!), 5000);
@@ -235,44 +227,37 @@ async function startApp() {
 
         if (typeof idx === 'number') {
           if (!isSubMenu) {
-            // MAIN MENU
             const cmds = ['play', 'pause', 'next', 'previous', 'devices'];
             const type = cmds[idx];
-
             if (type === 'devices') {
               isSubMenu = true;
               await fetchDevices(token!);
               await updateGlassesUI(bridge, true);
             } else if (type) {
               const method = (type === 'play' || type === 'pause') ? 'PUT' : 'POST';
-              fetch(`https://api.spotify.com/v1/me/player/${type}`, {
-                method, 
-                headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-                body: method === 'PUT' ? JSON.stringify({}) : null
+              await fetch(`https://api.spotify.com/v1/me/player/${type}`, {
+                method, headers: { Authorization: `Bearer ${token}` }
               });
             }
           } else {
-            // SUB-MENU (DEVICES)
-            // Fix: If it's the last item in the list, it's always "BACK"
             if (idx >= deviceList.length) {
               isSubMenu = false;
               await updateGlassesUI(bridge, true);
-            } else {
-              const selectedDevice = deviceList[idx];
-              if (selectedDevice && selectedDevice.id) {
-                await fetch('https://api.spotify.com/v1/me/player', {
-                  method: 'PUT',
-                  headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ device_ids: [selectedDevice.id], play: true })
-                });
-                isSubMenu = false;
-                setTimeout(() => updateGlassesUI(bridge, true), 500);
-              }
+            } else if (deviceList[idx]) {
+              await fetch('https://api.spotify.com/v1/me/player', {
+                method: 'PUT',
+                headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ device_ids: [deviceList[idx].id], play: true })
+              });
+              isSubMenu = false;
+              setTimeout(() => updateGlassesUI(bridge, true), 500);
             }
           }
         }
       });
-    } catch (e) { console.error(e); }
+    }
+  } catch (err) {
+    console.error("Initialization Error:", err);
   }
 }
 
@@ -285,10 +270,8 @@ async function syncSpotify(token: string) {
       const data = await res.json();
       if (data.item) {
         trackData = { 
-          name: data.item.name, 
-          artist: data.item.artists[0].name, 
-          progressMs: data.progress_ms, 
-          durationMs: data.item.duration_ms, 
+          name: data.item.name, artist: data.item.artists[0].name, 
+          progressMs: data.progress_ms, durationMs: data.item.duration_ms, 
           isPlaying: data.is_playing 
         };
         const n = document.getElementById('web-track-name'), 
