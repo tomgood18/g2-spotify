@@ -147,6 +147,7 @@ async function updateGlassesUI(bridge: any, forceListRefresh = false) {
 }
 
 function renderWebUI(isLoggedIn: boolean) {
+  // FULL UI RESTORATION
   document.body.style.margin = '0';
   document.body.style.padding = '0';
   document.body.style.backgroundColor = '#121212';
@@ -203,7 +204,6 @@ async function fetchDevices(token: string) {
     deviceList = data.devices || [];
     return deviceList;
   } catch (e) { 
-    console.error("Device fetch error:", e);
     return []; 
   }
 }
@@ -235,6 +235,7 @@ async function startApp() {
 
         if (typeof idx === 'number') {
           if (!isSubMenu) {
+            // MAIN MENU
             const cmds = ['play', 'pause', 'next', 'previous', 'devices'];
             const type = cmds[idx];
 
@@ -243,29 +244,30 @@ async function startApp() {
               await fetchDevices(token!);
               await updateGlassesUI(bridge, true);
             } else if (type) {
-              const endpoint = type === 'play' ? 'play' : type === 'pause' ? 'pause' : type === 'next' ? 'next' : 'previous';
               const method = (type === 'play' || type === 'pause') ? 'PUT' : 'POST';
-              fetch(`https://api.spotify.com/v1/me/player/${endpoint}`, {
+              fetch(`https://api.spotify.com/v1/me/player/${type}`, {
                 method, 
                 headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
                 body: method === 'PUT' ? JSON.stringify({}) : null
               });
             }
           } else {
-            // Safety: Check if idx is valid for deviceList
-            if (idx < deviceList.length && deviceList[idx]) {
-              const deviceId = deviceList[idx].id;
-              await fetch('https://api.spotify.com/v1/me/player', {
-                method: 'PUT',
-                headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ device_ids: [deviceId], play: true })
-              });
-              isSubMenu = false;
-              setTimeout(() => updateGlassesUI(bridge, true), 500);
-            } else {
-              // CLICKED 'BACK' or invalid
+            // SUB-MENU (DEVICES)
+            // Fix: If it's the last item in the list, it's always "BACK"
+            if (idx >= deviceList.length) {
               isSubMenu = false;
               await updateGlassesUI(bridge, true);
+            } else {
+              const selectedDevice = deviceList[idx];
+              if (selectedDevice && selectedDevice.id) {
+                await fetch('https://api.spotify.com/v1/me/player', {
+                  method: 'PUT',
+                  headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ device_ids: [selectedDevice.id], play: true })
+                });
+                isSubMenu = false;
+                setTimeout(() => updateGlassesUI(bridge, true), 500);
+              }
             }
           }
         }
