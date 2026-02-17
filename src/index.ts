@@ -192,45 +192,64 @@ async function startApp() {
       setInterval(() => syncSpotify(token!), 5000);
 
       bridge.onEvenHubEvent(async (e: any) => {
+        // Extract the index carefully
         let idx = e.listEvent?.currentSelectItemIndex;
         if (idx === undefined && e.jsonData) {
           const parsed = typeof e.jsonData === 'string' ? JSON.parse(e.jsonData) : e.jsonData;
           idx = parsed.currentSelectItemIndex;
         }
 
-        if (typeof idx === 'number') {
-          console.log(`[Debug] Tap detected! Index: ${idx}, isSubMenu: ${isSubMenu}`);
+        // CRITICAL FIX: Check for null/undefined specifically, because 0 is a valid index!
+        if (idx !== undefined && idx !== null) {
+          console.log(`[Debug] Tap detected! Raw Index: ${idx}, isSubMenu: ${isSubMenu}`);
           
           if (!isSubMenu) {
             const actions = ['play', 'pause', 'next', 'previous', 'devices'];
             const action = actions[idx];
+            
+            console.log(`[Debug] Main Menu Selection: ${action} (Index: ${idx})`);
+
             if (action === 'devices') {
-              console.log("[Debug] User requested devices");
               isSubMenu = true; 
               await fetchDevices(token!);
               await updateGlassesUI(bridge, true);
             } else if (action) {
-              fetch(`https://api.spotify.com/v1/me/player/${action}`, {
+              fetch(`https://api.spotify.com/v1/me/player/$/${action}`, {
                 method: (action === 'play' || action === 'pause') ? 'PUT' : 'POST',
                 headers: { Authorization: `Bearer ${token}` }
               });
             }
           } else {
-            console.log("[Debug] SubMenu selection. Processing index...");
-            if (idx < deviceList.length) {
+            // SUB-MENU LOGIC
+            const items = getMenuItems();
+            const selectedName = items[idx];
+            console.log(`[Debug] Device Menu Selection: ${selectedName} (Index: ${idx})`);
+
+            if (selectedName === 'BACK') {
+              console.log("[Debug] Going back to Main Menu");
+              isSubMenu = false;
+              await updateGlassesUI(bridge, true);
+            } else if (idx < deviceList.length) {
               const dId = deviceList[idx]?.id;
               if (dId) {
-                console.log("[Debug] Switching to device:", dId);
+                console.log(`[Debug] Switching playback to: ${selectedName} (${dId})`);
                 await fetch('https://api.spotify.com/v1/me/player', {
                   method: 'PUT',
-                  headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                  headers: { 
+                    Authorization: `Bearer ${token}`, 
+                    'Content-Type': 'application/json' 
+                  },
                   body: JSON.stringify({ device_ids: [dId], play: true })
                 });
               }
+              // Return to main menu after selecting a device
+              isSubMenu = false;
+              await updateGlassesUI(bridge, true);
             }
-            isSubMenu = false;
-            await updateGlassesUI(bridge, true);
           }
+        } else {
+          // Log when we get an event but no index (like a scroll or system event)
+          console.log("[Debug] EvenHub event received without index:", e.jsonData || e);
         }
       });
     } catch (e) { console.error("[Debug] Init Error:", e); }
