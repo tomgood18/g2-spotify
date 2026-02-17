@@ -149,7 +149,6 @@ async function updateGlassesUI(bridge: any) {
 }
 
 function renderWebUI(isLoggedIn: boolean) {
-  function renderWebUI(isLoggedIn: boolean) {
   // 1. Reset and Style Body
   document.body.style.margin = '0';
   document.body.style.padding = '0';
@@ -203,7 +202,6 @@ function renderWebUI(isLoggedIn: boolean) {
     `;
     document.getElementById('logout-btn')?.addEventListener('click', logout);
   }
-}
 }
 
 async function syncSpotify(token: string) {
