@@ -227,14 +227,24 @@ async function startApp() {
       setInterval(() => syncSpotify(token!), 5000);
       
       bridge.onEvenHubEvent((e: any) => {
-        if (e.listEvent && typeof e.listEvent.currentSelectItemIndex === 'number') {
+        console.log("Full Event Data:", JSON.stringify(e));
+
+        // The simulator sometimes hides the index inside the listEvent or a raw property
+        const listEvent = e.listEvent;
+        if (!listEvent) return;
+
+        // Try multiple ways to get the index (SDK version differences)
+        const selectedIndex = listEvent.currentSelectItemIndex ?? e.currentSelectItemIndex;
+
+        if (typeof selectedIndex !== 'undefined' && selectedIndex !== null) {
           const cmds = ['play', 'pause', 'next', 'previous'];
-          const type = cmds[e.listEvent.currentSelectItemIndex];
+          const type = cmds[selectedIndex];
+          
           if (type) {
+            console.log(`Executing Spotify Command: ${type}`);
             const isControl = (type === 'play' || type === 'pause');
             const method = isControl ? 'PUT' : 'POST';
             
-            // Fix: Spotify PUT requests (play/pause) often require a body, even if empty.
             fetch(`https://googleusercontent.com/spotify.com/3/${type}`, {
               method,
               headers: { 
@@ -242,8 +252,15 @@ async function startApp() {
                 'Content-Type': 'application/json' 
               },
               body: isControl ? JSON.stringify({}) : null
-            }).then(() => setTimeout(() => syncSpotify(token!), 600));
+            })
+            .then(res => {
+              console.log(`Spotify Response: ${res.status}`);
+              setTimeout(() => syncSpotify(token!), 600);
+            })
+            .catch(err => console.error("Playback Fetch Error:", err));
           }
+        } else {
+          console.warn("Event received but index was undefined. Check SDK version.");
         }
       });
     } catch (e) { console.error("Bridge Error:", e); }
