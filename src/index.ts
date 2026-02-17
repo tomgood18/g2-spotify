@@ -17,6 +17,8 @@ const SCOPES = 'user-modify-playback-state user-read-playback-state user-read-cu
 let isFirstRender = true;
 let isSubMenu = false; 
 let deviceList: any[] = [];
+let currentTextID = 1;
+let currentListID = 2;
 let trackData = {
   name: "Loading...",
   artist: "Spotify",
@@ -25,33 +27,27 @@ let trackData = {
   isPlaying: false
 };
 
-// ================= AUTH UTILS =================
+// ================= AUTH & UTILS (Kept original) =================
 
 const generateRandomString = (length: number) => {
   const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   const values = crypto.getRandomValues(new Uint8Array(length));
   return values.reduce((acc, x) => acc + possible[x % possible.length], "");
 };
-
 const sha256 = async (plain: string) => {
   const encoder = new TextEncoder();
   const data = encoder.encode(plain);
   return window.crypto.subtle.digest('SHA-256', data);
 };
-
 const base64urlencode = (a: ArrayBuffer) => {
   return btoa(String.fromCharCode.apply(null, Array.from(new Uint8Array(a))))
     .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 };
-
 const logout = () => {
   localStorage.removeItem('spotify_token');
   localStorage.removeItem('code_verifier');
   window.location.href = REDIRECT_URI;
 };
-
-// ================= AUTH FLOW =================
-
 async function redirectToSpotify() {
   const verifier = generateRandomString(64);
   localStorage.setItem('code_verifier', verifier);
@@ -61,9 +57,8 @@ async function redirectToSpotify() {
     response_type: 'code', client_id: CLIENT_ID, scope: SCOPES,
     code_challenge_method: 'S256', code_challenge: challenge, redirect_uri: REDIRECT_URI,
   });
-  window.location.href = `https://accounts.spotify.com/authorize?$?${p.toString()}`;
+  window.location.href = `https://accounts.spotify.com/authorize?${p.toString()}`;
 }
-
 async function exchangeCode(code: string) {
   const verifier = localStorage.getItem('code_verifier');
   if (!verifier) return null;
@@ -83,7 +78,7 @@ async function exchangeCode(code: string) {
   return null;
 }
 
-// ================= UI & SYNC =================
+// ================= UI LOGIC =================
 
 const formatTime = (ms: number) => {
   const s = Math.floor((ms / 1000) % 60);
@@ -115,65 +110,60 @@ async function updateGlassesUI(bridge: any, forcePageRefresh = false) {
   try {
     const menuNames = getMenuItems();
 
-    // Wrap properties in .fromJson to provide the required .toJson() method
-    const textObj = TextContainerProperty.fromJson({
-      xPosition: 10, yPosition: 10, width: 556, height: 90, 
-      containerID: 1, containerName: 'info-bar',
-      content: displayContent, isEventCapture: 0, borderWidth: 1, borderColor: 7
-    });
+    if (isFirstRender || forcePageRefresh) {
+      // Force unique IDs if we are swapping pages
+      if (forcePageRefresh) {
+        currentTextID += 10;
+        currentListID += 10;
+      }
 
-    const listObj = ListContainerProperty.fromJson({
-      xPosition: 10, yPosition: 105, width: 556, height: 175, 
-      containerID: 2, containerName: 'ctrl-list',
-      itemContainer: ListItemContainerProperty.fromJson({
-        itemCount: menuNames.length, itemName: menuNames, isItemSelectBorderEn: 1
-      }),
-      isEventCapture: 1
-    });
+      console.log(`[Debug] Building UI. TextID: ${currentTextID}, ListID: ${currentListID}`);
+      console.log("[Debug] Menu items:", menuNames);
 
-    if (isFirstRender) {
-      console.log("[Debug] createStartUpPageContainer");
-      const container = CreateStartUpPageContainer.fromJson({
-        containerTotalNum: 2, textObject: [textObj], listObject: [listObj]
+      const textObj = TextContainerProperty.fromJson({
+        xPosition: 10, yPosition: 10, width: 556, height: 90, 
+        containerID: currentTextID, containerName: 'info',
+        content: displayContent, isEventCapture: 0, borderWidth: 1, borderColor: 7
       });
-      await bridge.createStartUpPageContainer(container);
-      isFirstRender = false;
-    } else if (forcePageRefresh) {
-      console.log("[Debug] rebuildPageContainer");
-      const container = RebuildPageContainer.fromJson({
-        containerTotalNum: 2, textObject: [textObj], listObject: [listObj]
+
+      const listObj = ListContainerProperty.fromJson({
+        xPosition: 10, yPosition: 105, width: 556, height: 175, 
+        containerID: currentListID, containerName: 'menu',
+        itemContainer: ListItemContainerProperty.fromJson({
+          itemCount: menuNames.length, itemName: menuNames, isItemSelectBorderEn: 1
+        }),
+        isEventCapture: 1
       });
-      await bridge.rebuildPageContainer(container);
+
+      if (isFirstRender) {
+        console.log("[Debug] Calling createStartUpPageContainer");
+        const container = CreateStartUpPageContainer.fromJson({
+          containerTotalNum: 2, textObject: [textObj], listObject: [listObj]
+        });
+        const res = await bridge.createStartUpPageContainer(container);
+        console.log("[Debug] Startup Result:", res);
+        isFirstRender = false;
+      } else {
+        console.log("[Debug] Calling rebuildPageContainer");
+        const container = RebuildPageContainer.fromJson({
+          containerTotalNum: 2, textObject: [textObj], listObject: [listObj]
+        });
+        const res = await bridge.rebuildPageContainer(container);
+        console.log("[Debug] Rebuild Success:", res);
+      }
     } else {
+      // Periodic update for track info
       const upgrade = TextContainerUpgrade.fromJson({
-        containerID: 1, containerName: 'info-bar', content: displayContent
+        containerID: currentTextID, containerName: 'info', content: displayContent
       });
       await bridge.textContainerUpgrade(upgrade);
     }
-  } catch (e) { console.error("[Debug] UI Update ERROR:", e); }
-}
-
-function renderWebUI(isLoggedIn: boolean) {
-  document.body.style.cssText = "margin:0; padding:0; background-color:#121212; color:white; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; display:flex; flex-direction:column; min-height:100vh; overflow:hidden;";
-  if (!isLoggedIn) {
-    document.body.innerHTML = `<div style="flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center; padding: 20px;"><div style="margin-bottom: 20px; font-size: 60px;">🕶️</div><h1 style="font-size: 2.5rem; margin: 0 0 10px 0; letter-spacing: -1px;">G2 Spotify</h1><p style="color: #b3b3b3; margin-bottom: 30px; font-size: 1.1rem; max-width: 300px;">Control your music through your vision.</p><button id="login-btn" style="padding:18px 48px; background:#1DB954; color:white; border-radius:500px; border:none; font-weight:bold; font-size:1rem; cursor:pointer; box-shadow: 0 10px 20px rgba(0,0,0,0.3);">CONNECT WITH SPOTIFY</button></div>`;
-    document.getElementById('login-btn')?.addEventListener('click', redirectToSpotify);
-  } else {
-    document.body.innerHTML = `<nav style="padding: 20px; background: rgba(0,0,0,0.5); display: flex; justify-content: space-between; align-items: center; backdrop-filter: blur(10px);"><div style="display:flex; align-items:center; gap:8px;"><div style="width:10px; height:10px; background:#1DB954; border-radius:50%; box-shadow: 0 0 8px #1DB954;"></div><span style="font-weight: bold; font-size: 0.9rem; letter-spacing: 1px; color: #1DB954;">G2 ACTIVE</span></div><button id="logout-btn" style="background: transparent; color: #b3b3b3; border: 1px solid #333; padding: 6px 14px; border-radius: 20px; font-size: 0.8rem; cursor: pointer;">Sign Out</button></nav><div style="flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center; padding: 20px; text-align:center;"><div id="web-track-card" style="background: linear-gradient(135deg, #282828 0%, #121212 100%); padding: 40px 30px; border-radius: 24px; border: 1px solid #333; width: 100%; max-width: 350px; box-shadow: 0 20px 40px rgba(0,0,0,0.5);"><div style="color: #1DB954; font-size: 0.8rem; font-weight: bold; margin-bottom: 20px; letter-spacing: 2px;">NOW STREAMING</div><h2 id="web-track-name" style="margin:0 0 12px 0; font-size: 1.8rem; line-height: 1.2; word-wrap: break-word;">Waiting...</h2><p id="web-track-artist" style="color: #b3b3b3; margin:0; font-size: 1.1rem;">Open Spotify app</p><div style="width: 100%; height: 4px; background: #3e3e3e; border-radius: 2px; margin-top: 30px; overflow: hidden;"><div id="web-progress-bar" style="width: 0%; height: 100%; background: #1DB954; transition: width 1s linear;"></div></div></div><p style="margin-top: 40px; color: #555; font-size: 0.8rem; max-width: 250px;">Controls active on glasses. Tap to navigate.</p></div>`;
-    document.getElementById('logout-btn')?.addEventListener('click', logout);
+  } catch (e) { 
+    console.error("[Debug] UI Exception:", e); 
   }
 }
 
-async function fetchDevices(token: string) {
-  try {
-    const res = await fetch('https://api.spotify.com/v1/me/player/devices', {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    const data = await res.json();
-    deviceList = data.devices || [];
-    return deviceList;
-  } catch (e) { return []; }
-}
+// ================= APP FLOW =================
 
 async function startApp() {
   const params = new URLSearchParams(window.location.search);
@@ -185,11 +175,19 @@ async function startApp() {
     if (token) window.history.replaceState({}, '', REDIRECT_URI);
   }
 
-  renderWebUI(!!token);
+  // Basic Web UI
+  document.body.style.cssText = "background:#121212; color:white; font-family:sans-serif; text-align:center; padding:20px;";
+  if (!token) {
+    document.body.innerHTML = `<h1>G2 Spotify</h1><button id="l-btn" style="padding:15px; background:#1DB954; color:white; border:none; border-radius:20px; font-weight:bold;">CONNECT</button>`;
+    document.getElementById('l-btn')?.addEventListener('click', redirectToSpotify);
+  } else {
+    document.body.innerHTML = `<h1>G2 ACTIVE</h1><div id="track-info">Waiting for Spotify...</div><button id="out" style="margin-top:20px; background:none; color:#555; border:1px solid #333;">Logout</button>`;
+    document.getElementById('out')?.addEventListener('click', logout);
 
-  if (token) {
     try {
       const bridge = await waitForEvenAppBridge();
+      console.log("[Debug] Bridge Ready");
+      
       setInterval(() => updateGlassesUI(bridge), 1000);
       setInterval(() => syncSpotify(token!), 5000);
 
@@ -201,22 +199,28 @@ async function startApp() {
         }
 
         if (typeof idx === 'number') {
+          console.log(`[Debug] Tap detected! Index: ${idx}, isSubMenu: ${isSubMenu}`);
+          
           if (!isSubMenu) {
-            const action = ['play', 'pause', 'next', 'previous', 'devices'][idx];
+            const actions = ['play', 'pause', 'next', 'previous', 'devices'];
+            const action = actions[idx];
             if (action === 'devices') {
+              console.log("[Debug] User requested devices");
               isSubMenu = true; 
               await fetchDevices(token!);
               await updateGlassesUI(bridge, true);
             } else if (action) {
-              fetch(`https://api.spotify.com/v1/me/player/$?${action}`, {
+              fetch(`https://api.spotify.com/v1/me/player/${action}`, {
                 method: (action === 'play' || action === 'pause') ? 'PUT' : 'POST',
                 headers: { Authorization: `Bearer ${token}` }
               });
             }
           } else {
+            console.log("[Debug] SubMenu selection. Processing index...");
             if (idx < deviceList.length) {
               const dId = deviceList[idx]?.id;
               if (dId) {
+                console.log("[Debug] Switching to device:", dId);
                 await fetch('https://api.spotify.com/v1/me/player', {
                   method: 'PUT',
                   headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -229,22 +233,34 @@ async function startApp() {
           }
         }
       });
-    } catch (e) { console.error(e); }
+    } catch (e) { console.error("[Debug] Init Error:", e); }
   }
+}
+
+async function fetchDevices(token: string) {
+  try {
+    console.log("[Debug] Fetching Spotify Devices...");
+    const res = await fetch('https://api.spotify.com/v1/me/player/devices', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    const data = await res.json();
+    deviceList = data.devices || [];
+    console.log("[Debug] Devices found:", deviceList.length);
+    return deviceList;
+  } catch (e) { return []; }
 }
 
 async function syncSpotify(token: string) {
   try {
-    const res = await fetch('https://api.spotify.com/v1/me/player', {
+    const res = await fetch('https://api.spotify.com/v1/me/player/currently-playing', {
       headers: { Authorization: `Bearer ${token}` }
     });
     if (res.status === 200) {
       const data = await res.json();
       if (data.item) {
         trackData = { name: data.item.name, artist: data.item.artists[0].name, progressMs: data.progress_ms, durationMs: data.item.duration_ms, isPlaying: data.is_playing };
-        const n = document.getElementById('web-track-name'), a = document.getElementById('web-track-artist'), p = document.getElementById('web-progress-bar');
-        if (n && a) { n.innerText = trackData.name; a.innerText = trackData.artist; }
-        if (p) p.style.width = `${(trackData.progressMs / trackData.durationMs) * 100}%`;
+        const el = document.getElementById('track-info');
+        if (el) el.innerText = `${trackData.name} - ${trackData.artist}`;
       }
     }
   } catch (e) {}
