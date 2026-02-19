@@ -155,7 +155,7 @@ async function updateGlassesUI(bridge: any, forcePageRefresh = false) {
   }
 
   const timeStr = `${formatTime(trackData.progressMs)} / ${formatTime(trackData.durationMs)}`;
-  const displayContent = `   ${truncate(trackData.name, 25)}\n   ${truncate(trackData.artist, 25)}\n   ${timeStr}`;
+  const displayContent = `   ${truncate(trackData.name, 50)}\n   ${truncate(trackData.artist, 50)}\n   ${timeStr}`;
 
   try {
     const menuNames = getMenuItems();
