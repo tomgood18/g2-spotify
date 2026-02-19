@@ -153,45 +153,65 @@ async function updateGlassesUI(bridge: any, forcePageRefresh = false) {
   if (!token) return;
 
   const timeStr = `${formatTime(trackData.progressMs)} / ${formatTime(trackData.durationMs)}`;
-  
-  // ADDED PADDING: We use "  " (two spaces) before each line to create left-side padding inside the box
-  const displayContent = `  ${trackData.name}\n  ${trackData.artist}\n  ${timeStr}`;
+  const paddedName = `   ${trackData.name}`;
+  const paddedArtist = `   ${trackData.artist}`;
+  const paddedTime = `   ${timeStr}`;
+  const displayContent = `${paddedName}\n${paddedArtist}\n${paddedTime}`;
 
   try {
     const menuNames = getMenuItems();
 
-    const textObj = TextContainerProperty.fromJson({
-      xPosition: 10, yPosition: 10, width: 550, height: 85, 
-      containerID: 1, containerName: 'text_box',
-      content: displayContent, isEventCapture: 0, borderWidth: 1, borderColor: 7
-    });
-
-    const listObj = ListContainerProperty.fromJson({
-      xPosition: 10, yPosition: 100, width: 550, height: 175, 
-      containerID: 2, containerName: 'list_box',
-      itemContainer: ListItemContainerProperty.fromJson({
-        itemCount: menuNames.length, itemName: menuNames, isItemSelectBorderEn: 1
-      }),
-      isEventCapture: 1
-    });
-
     if (isFirstRender) {
+      const textObj = TextContainerProperty.fromJson({
+        xPosition: 10, yPosition: 10, width: 550, height: 85, 
+        containerID: 1, containerName: 'text_box',
+        content: displayContent, isEventCapture: 0, borderWidth: 1, borderColor: 7
+      });
+
+      const listObj = ListContainerProperty.fromJson({
+        xPosition: 10, yPosition: 100, width: 550, height: 175, 
+        containerID: 2, containerName: 'list_box',
+        itemContainer: ListItemContainerProperty.fromJson({
+          itemCount: menuNames.length, itemName: menuNames, isItemSelectBorderEn: 1
+        }),
+        isEventCapture: 1
+      });
+
       const container = CreateStartUpPageContainer.fromJson({
         containerTotalNum: 2, textObject: [textObj], listObject: [listObj]
       });
       const res = await bridge.createStartUpPageContainer(container);
       if (res === 0) isFirstRender = false;
     } else if (forcePageRefresh) {
+      // Logic for when we swap menus (Main <-> Devices)
+      const textObj = TextContainerProperty.fromJson({
+        xPosition: 10, yPosition: 10, width: 550, height: 85, 
+        containerID: 1, containerName: 'text_box',
+        content: displayContent, isEventCapture: 0, borderWidth: 1, borderColor: 7
+      });
+      const listObj = ListContainerProperty.fromJson({
+        xPosition: 10, yPosition: 100, width: 550, height: 175, 
+        containerID: 2, containerName: 'list_box',
+        itemContainer: ListItemContainerProperty.fromJson({
+          itemCount: menuNames.length, itemName: menuNames, isItemSelectBorderEn: 1
+        }),
+        isEventCapture: 1
+      });
       const container = RebuildPageContainer.fromJson({
         containerTotalNum: 2, textObject: [textObj], listObject: [listObj]
       });
       await bridge.rebuildPageContainer(container);
     } else {
+      // CRITICAL: This now sends the updated time string to the glasses every 2 seconds
       await bridge.textContainerUpgrade({
-        containerID: 1, containerName: 'text_box', content: displayContent
+        containerID: 1,
+        containerName: 'text_box',
+        content: displayContent
       });
     }
-  } catch (e) { console.error("[Debug] UI Error:", e); }
+  } catch (e) {
+    console.error("Glasses UI Update Error:", e);
+  }
 }
 
 async function startApp() {
@@ -222,7 +242,7 @@ async function startApp() {
       updateGlassesUI(bridge);
 
       setInterval(() => syncSpotify(token!), 5000);
-      setInterval(() => updateGlassesUI(bridge), 2000);
+      setInterval(() => updateGlassesUI(bridge), 1000);
 
       bridge.onEvenHubEvent(async (e: any) => {
         const source = e.listEvent || (e.jsonData && typeof e.jsonData === 'object' ? e.jsonData : null);
@@ -283,9 +303,7 @@ async function syncSpotify(token: string) {
       headers: { Authorization: `Bearer ${token}` }
     });
 
-    // 1. HANDLE EXPIRED TOKEN
     if (res.status === 401) {
-      console.log("[Debug] Token expired. Re-authenticating...");
       localStorage.removeItem('spotify_token');
       redirectToSpotify();
       return;
@@ -301,16 +319,15 @@ async function syncSpotify(token: string) {
           durationMs: data.item.duration_ms,
           isPlaying: data.is_playing
         };
-        updateWebDisplay();
+        updateWebDisplay(); // Updates the web progress and text timers
       }
     } else if (res.status === 204) {
-      // 2. HANDLE NO ACTIVE SESSION
       trackData.name = "No Active Session";
-      trackData.artist = "Select a device";
+      trackData.artist = "Open Spotify";
       updateWebDisplay();
     }
   } catch (e) {
-    console.error("[Debug] Sync Error:", e);
+    console.error("Sync Error:", e);
   }
 }
 
@@ -319,9 +336,16 @@ function updateWebDisplay() {
   const nameEl = document.getElementById('web-track-name');
   const artistEl = document.getElementById('web-track-artist');
   const barEl = document.getElementById('web-progress-bar');
+  const pTimeEl = document.getElementById('web-p-time'); // Progress Timer
+  const dTimeEl = document.getElementById('web-d-time'); // Duration Timer
   
   if (nameEl) nameEl.innerText = trackData.name;
   if (artistEl) artistEl.innerText = trackData.artist;
+  
+  // Update the actual text numbers (e.g., 1:20 / 3:45)
+  if (pTimeEl) pTimeEl.innerText = formatTime(trackData.progressMs);
+  if (dTimeEl) dTimeEl.innerText = formatTime(trackData.durationMs);
+  
   if (barEl) {
     const pct = trackData.durationMs > 0 ? (trackData.progressMs / trackData.durationMs) * 100 : 0;
     barEl.style.width = `${pct}%`;
