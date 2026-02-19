@@ -115,31 +115,27 @@ function renderWebUI(isLoggedIn: boolean) {
     document.getElementById('login-btn')?.addEventListener('click', redirectToSpotify);
   } else {
     document.body.innerHTML = `
-      <nav style="padding: 20px 40px; background: rgba(0,0,0,0.8); display: flex; justify-content: space-between; align-items: center; backdrop-filter: blur(10px); border-bottom: 1px solid #282828;">
+      <nav style="padding: 20px 40px; background: #000; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #282828;">
         <div style="display:flex; align-items:center; gap:12px;">
-          <div style="width:12px; height:12px; background:#1DB954; border-radius:50%; box-shadow: 0 0 12px #1DB954;"></div>
-          <span style="font-weight: bold; font-size: 0.9rem; letter-spacing: 1.5px; color: #1DB954;">G2 CONNECTED</span>
+          <div style="width:12px; height:12px; background:#1DB954; border-radius:50%; box-shadow: 0 0 10px #1DB954;"></div>
+          <span style="font-weight: bold; font-size: 0.8rem; letter-spacing: 1.5px; color: #fff;">G2 CONNECTED</span>
         </div>
-        <button id="logout-btn" style="background: transparent; color: #b3b3b3; border: 1px solid #535353; padding: 8px 20px; border-radius: 20px; font-size: 0.8rem; cursor: pointer; font-weight:bold;">LOGOUT</button>
+        <button id="logout-btn" style="background: transparent; color: #b3b3b3; border: 1px solid #535353; padding: 8px 20px; border-radius: 20px; font-size: 0.8rem; cursor: pointer;">LOGOUT</button>
       </nav>
       <div style="flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center; padding: 20px;">
-        <div id="web-track-card" style="background: #181818; padding: 40px; border-radius: 12px; width: 100%; max-width: 400px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); border: 1px solid #282828;">
-          <div style="color: #b3b3b3; font-size: 0.75rem; font-weight: bold; margin-bottom: 24px; letter-spacing: 2px;">CURRENTLY PLAYING</div>
-          <h2 id="web-track-name" style="margin:0 0 8px 0; font-size: 2.2rem; line-height: 1.1; letter-spacing: -1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${trackData.name}</h2>
-          <p id="web-track-artist" style="color: #1DB954; margin:0; font-size: 1.2rem; font-weight: 500;">${trackData.artist}</p>
+        <div style="background: #181818; padding: 40px; border-radius: 12px; width: 100%; max-width: 400px; border: 1px solid #282828; text-align: left;">
+          <div style="color: #b3b3b3; font-size: 0.75rem; font-weight: bold; margin-bottom: 24px; letter-spacing: 2px;">NOW PLAYING</div>
+          <h2 id="web-track-name" style="margin:0; font-size: 2rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${trackData.name}</h2>
+          <p id="web-track-artist" style="color: #1DB954; margin:8px 0 0 0; font-size: 1.2rem;">${trackData.artist}</p>
           <div style="margin-top: 40px;">
              <div style="width: 100%; height: 4px; background: #4f4f4f; border-radius: 2px; overflow: hidden;">
-                <div id="web-progress-bar" style="width: 0%; height: 100%; background: #1DB954; transition: width 1s linear;"></div>
+                <div id="web-progress-bar" style="width: 0%; height: 100%; background: #fff;"></div>
              </div>
-             <div style="display: flex; justify-content: space-between; color: #b3b3b3; font-size: 0.75rem; margin-top: 8px; font-variant-numeric: tabular-nums;">
-                <span id="web-progress-time">0:00</span>
-                <span id="web-duration-time">0:00</span>
+             <div style="display: flex; justify-content: space-between; color: #b3b3b3; font-size: 0.75rem; margin-top: 8px;">
+                <span id="web-p-time">0:00</span>
+                <span id="web-d-time">0:00</span>
              </div>
           </div>
-        </div>
-        <div style="margin-top: 40px; display: flex; align-items: center; gap: 10px; color: #535353; font-size: 0.85rem; font-weight: 500;">
-           <span>GLASSES CONTROLS ACTIVE</span>
-           <div style="display:flex; gap:4px;"><div style="width:4px; height:4px; background:#535353; border-radius:50%;"></div><div style="width:4px; height:4px; background:#535353; border-radius:50%;"></div><div style="width:4px; height:4px; background:#535353; border-radius:50%;"></div></div>
         </div>
       </div>`;
     document.getElementById('logout-btn')?.addEventListener('click', logout);
@@ -153,10 +149,7 @@ async function updateGlassesUI(bridge: any, forcePageRefresh = false) {
   if (!token) return;
 
   const timeStr = `${formatTime(trackData.progressMs)} / ${formatTime(trackData.durationMs)}`;
-  const paddedName = `   ${trackData.name}`;
-  const paddedArtist = `   ${trackData.artist}`;
-  const paddedTime = `   ${timeStr}`;
-  const displayContent = `${paddedName}\n${paddedArtist}\n${paddedTime}`;
+  const displayContent = `   ${trackData.name}\n   ${trackData.artist}\n   ${timeStr}`;
 
   try {
     const menuNames = getMenuItems();
@@ -202,16 +195,14 @@ async function updateGlassesUI(bridge: any, forcePageRefresh = false) {
       });
       await bridge.rebuildPageContainer(container);
     } else {
-      // CRITICAL: This now sends the updated time string to the glasses every 2 seconds
+      // This ensures the time updates on the glasses every loop
       await bridge.textContainerUpgrade({
         containerID: 1,
         containerName: 'text_box',
         content: displayContent
       });
     }
-  } catch (e) {
-    console.error("Glasses UI Update Error:", e);
-  }
+  } catch (e) { console.error(e); }
 }
 
 async function startApp() {
@@ -336,13 +327,12 @@ function updateWebDisplay() {
   const nameEl = document.getElementById('web-track-name');
   const artistEl = document.getElementById('web-track-artist');
   const barEl = document.getElementById('web-progress-bar');
-  const pTimeEl = document.getElementById('web-p-time'); // Progress Timer
-  const dTimeEl = document.getElementById('web-d-time'); // Duration Timer
+  const pTimeEl = document.getElementById('web-p-time'); // Matching IDs exactly
+  const dTimeEl = document.getElementById('web-d-time'); 
   
   if (nameEl) nameEl.innerText = trackData.name;
   if (artistEl) artistEl.innerText = trackData.artist;
   
-  // Update the actual text numbers (e.g., 1:20 / 3:45)
   if (pTimeEl) pTimeEl.innerText = formatTime(trackData.progressMs);
   if (dTimeEl) dTimeEl.innerText = formatTime(trackData.durationMs);
   
