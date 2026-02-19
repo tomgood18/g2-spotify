@@ -232,7 +232,7 @@ async function startApp() {
       await syncSpotify(token);
       updateGlassesUI(bridge);
 
-      setInterval(() => syncSpotify(token!), 5000);
+      setInterval(() => syncSpotify(token!), 1000);
       setInterval(() => updateGlassesUI(bridge), 1000);
 
       bridge.onEvenHubEvent(async (e: any) => {
