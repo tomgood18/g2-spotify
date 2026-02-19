@@ -88,10 +88,15 @@ const formatTime = (ms: number) => {
   return `${m}:${s < 10 ? '0' : ''}${s}`;
 };
 
+// Truncation helper for Ellipsis
+const truncate = (str: string, len: number) => {
+  return str.length > len ? str.substring(0, len - 3) + "..." : str;
+};
+
 function getMenuItems() {
   if (isSubMenu) {
     const names = deviceList.length > 0 
-      ? deviceList.map(d => (d.name || "DEVICE").toUpperCase().substring(0, 15)) 
+      ? deviceList.map(d => truncate((d.name || "DEVICE").toUpperCase(), 15)) 
       : ['NO DEVICES'];
     names.push('BACK');
     return names;
@@ -107,29 +112,24 @@ function renderWebUI(isLoggedIn: boolean) {
   if (!isLoggedIn) {
     document.body.innerHTML = `
       <div style="flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center; padding: 20px;">
-        <div style="margin-bottom: 20px; font-size: 60px;">🕶️</div>
         <h1 style="font-size: 3rem; margin: 0 0 10px 0; letter-spacing: -2px;">G2 Spotify</h1>
-        <p style="color: #b3b3b3; margin-bottom: 30px; font-size: 1.2rem; max-width: 300px;">Control your music through your vision.</p>
-        <button id="login-btn" style="padding:18px 48px; background:#1DB954; color:white; border-radius:500px; border:none; font-weight:bold; font-size:1rem; cursor:pointer; transform: scale(1); transition: 0.2s;">CONNECT WITH SPOTIFY</button>
+        <button id="login-btn" style="padding:18px 48px; background:#1DB954; color:white; border-radius:500px; border:none; font-weight:bold; font-size:1rem; cursor:pointer;">CONNECT WITH SPOTIFY</button>
       </div>`;
     document.getElementById('login-btn')?.addEventListener('click', redirectToSpotify);
   } else {
     document.body.innerHTML = `
       <nav style="padding: 20px 40px; background: #000; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #282828;">
-        <div style="display:flex; align-items:center; gap:12px;">
-          <div style="width:12px; height:12px; background:#1DB954; border-radius:50%; box-shadow: 0 0 10px #1DB954;"></div>
-          <span style="font-weight: bold; font-size: 0.8rem; letter-spacing: 1.5px; color: #fff;">G2 CONNECTED</span>
-        </div>
+        <span style="font-weight: bold; font-size: 0.8rem; letter-spacing: 1.5px; color: #1DB954;">G2 CONNECTED</span>
         <button id="logout-btn" style="background: transparent; color: #b3b3b3; border: 1px solid #535353; padding: 8px 20px; border-radius: 20px; font-size: 0.8rem; cursor: pointer;">LOGOUT</button>
       </nav>
       <div style="flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center; padding: 20px;">
         <div style="background: #181818; padding: 40px; border-radius: 12px; width: 100%; max-width: 400px; border: 1px solid #282828; text-align: left;">
-          <div style="color: #b3b3b3; font-size: 0.75rem; font-weight: bold; margin-bottom: 24px; letter-spacing: 2px;">NOW PLAYING</div>
+          <div style="color: #b3b3b3; font-size: 0.75rem; font-weight: bold; margin-bottom: 24px; letter-spacing: 2px;">CURRENTLY PLAYING</div>
           <h2 id="web-track-name" style="margin:0; font-size: 2rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${trackData.name}</h2>
-          <p id="web-track-artist" style="color: #1DB954; margin:8px 0 0 0; font-size: 1.2rem;">${trackData.artist}</p>
+          <p id="web-track-artist" style="color: #1DB954; margin:8px 0 0 0; font-size: 1.2rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${trackData.artist}</p>
           <div style="margin-top: 40px;">
              <div style="width: 100%; height: 4px; background: #4f4f4f; border-radius: 2px; overflow: hidden;">
-                <div id="web-progress-bar" style="width: 0%; height: 100%; background: #fff;"></div>
+                <div id="web-progress-bar" style="width: 0%; height: 100%; background: #fff; transition: width 0.3s linear;"></div>
              </div>
              <div style="display: flex; justify-content: space-between; color: #b3b3b3; font-size: 0.75rem; margin-top: 8px;">
                 <span id="web-p-time">0:00</span>
@@ -148,8 +148,14 @@ async function updateGlassesUI(bridge: any, forcePageRefresh = false) {
   const token = localStorage.getItem('spotify_token');
   if (!token) return;
 
+  // Locally increment progress if playing for smooth 1s updates
+  if(trackData.isPlaying && trackData.progressMs < trackData.durationMs) {
+    trackData.progressMs += 1000;
+    updateWebDisplay(); // Sync Web UI immediately
+  }
+
   const timeStr = `${formatTime(trackData.progressMs)} / ${formatTime(trackData.durationMs)}`;
-  const displayContent = `   ${trackData.name}\n   ${trackData.artist}\n   ${timeStr}`;
+  const displayContent = `   ${truncate(trackData.name, 25)}\n   ${truncate(trackData.artist, 25)}\n   ${timeStr}`;
 
   try {
     const menuNames = getMenuItems();
@@ -160,7 +166,6 @@ async function updateGlassesUI(bridge: any, forcePageRefresh = false) {
         containerID: 1, containerName: 'text_box',
         content: displayContent, isEventCapture: 0, borderWidth: 1, borderColor: 7
       });
-
       const listObj = ListContainerProperty.fromJson({
         xPosition: 10, yPosition: 100, width: 550, height: 175, 
         containerID: 2, containerName: 'list_box',
@@ -169,14 +174,12 @@ async function updateGlassesUI(bridge: any, forcePageRefresh = false) {
         }),
         isEventCapture: 1
       });
-
       const container = CreateStartUpPageContainer.fromJson({
         containerTotalNum: 2, textObject: [textObj], listObject: [listObj]
       });
       const res = await bridge.createStartUpPageContainer(container);
       if (res === 0) isFirstRender = false;
     } else if (forcePageRefresh) {
-      // Logic for when we swap menus (Main <-> Devices)
       const textObj = TextContainerProperty.fromJson({
         xPosition: 10, yPosition: 10, width: 550, height: 85, 
         containerID: 1, containerName: 'text_box',
@@ -195,11 +198,8 @@ async function updateGlassesUI(bridge: any, forcePageRefresh = false) {
       });
       await bridge.rebuildPageContainer(container);
     } else {
-      // This ensures the time updates on the glasses every loop
       await bridge.textContainerUpgrade({
-        containerID: 1,
-        containerName: 'text_box',
-        content: displayContent
+        containerID: 1, containerName: 'text_box', content: displayContent
       });
     }
   } catch (e) { console.error(e); }
@@ -211,11 +211,7 @@ async function startApp() {
   const error = params.get('error');
   let token = localStorage.getItem('spotify_token');
 
-  // If Spotify sent an error (like access denied), clear and reset
-  if (error) {
-    logout();
-    return;
-  }
+  if (error) { logout(); return; }
 
   if (code && !token) {
     token = await exchangeCode(code);
@@ -227,20 +223,18 @@ async function startApp() {
   if (token) {
     try {
       const bridge = await waitForEvenAppBridge();
-      
-      // Immediate sync on load
       await syncSpotify(token);
       updateGlassesUI(bridge);
 
-      setInterval(() => syncSpotify(token!), 1000);
+      // Web/Glasses tick every 1 second
       setInterval(() => updateGlassesUI(bridge), 1000);
+      // Hard sync with Spotify API every 5 seconds to stay accurate
+      setInterval(() => syncSpotify(token!), 5000);
 
       bridge.onEvenHubEvent(async (e: any) => {
         const source = e.listEvent || (e.jsonData && typeof e.jsonData === 'object' ? e.jsonData : null);
         if (!source) return;
-
-        let idx = source.currentSelectItemIndex;
-        if (idx === undefined || idx === null) idx = 0; 
+        let idx = source.currentSelectItemIndex ?? 0;
 
         if (!isSubMenu) {
           const action = ['play', 'pause', 'next', 'previous', 'devices'][idx];
@@ -249,10 +243,11 @@ async function startApp() {
             await fetchDevices(token!);
             updateGlassesUI(bridge, true);
           } else if (action) {
-            fetch(`https://api.spotify.com/v1/me/player/${action === 'play' || action === 'pause' ? action : action}`, {
+            await fetch(`https://api.spotify.com/v1/me/player/${action === 'play' || action === 'pause' ? action : action}`, {
               method: (action === 'play' || action === 'pause') ? 'PUT' : 'POST',
               headers: { Authorization: `Bearer ${token}` }
             });
+            setTimeout(() => syncSpotify(token!), 500); // Quick refresh after command
           }
         } else {
           const items = getMenuItems();
@@ -293,16 +288,10 @@ async function syncSpotify(token: string) {
     const res = await fetch('https://api.spotify.com/v1/me/player', {
       headers: { Authorization: `Bearer ${token}` }
     });
-
-    if (res.status === 401) {
-      localStorage.removeItem('spotify_token');
-      redirectToSpotify();
-      return;
-    }
-
+    if (res.status === 401) { logout(); return; }
     if (res.status === 200) {
       const data = await res.json();
-      if (data && data.item) {
+      if (data?.item) {
         trackData = {
           name: data.item.name,
           artist: data.item.artists[0].name,
@@ -310,32 +299,28 @@ async function syncSpotify(token: string) {
           durationMs: data.item.duration_ms,
           isPlaying: data.is_playing
         };
-        updateWebDisplay(); // Updates the web progress and text timers
+        updateWebDisplay();
       }
     } else if (res.status === 204) {
       trackData.name = "No Active Session";
       trackData.artist = "Open Spotify";
+      trackData.isPlaying = false;
       updateWebDisplay();
     }
-  } catch (e) {
-    console.error("Sync Error:", e);
-  }
+  } catch (e) { console.error("Sync Error:", e); }
 }
 
-// Separate function to keep Web UI and Glasses in sync
 function updateWebDisplay() {
   const nameEl = document.getElementById('web-track-name');
   const artistEl = document.getElementById('web-track-artist');
   const barEl = document.getElementById('web-progress-bar');
-  const pTimeEl = document.getElementById('web-p-time'); // Matching IDs exactly
+  const pTimeEl = document.getElementById('web-p-time'); 
   const dTimeEl = document.getElementById('web-d-time'); 
   
   if (nameEl) nameEl.innerText = trackData.name;
   if (artistEl) artistEl.innerText = trackData.artist;
-  
   if (pTimeEl) pTimeEl.innerText = formatTime(trackData.progressMs);
   if (dTimeEl) dTimeEl.innerText = formatTime(trackData.durationMs);
-  
   if (barEl) {
     const pct = trackData.durationMs > 0 ? (trackData.progressMs / trackData.durationMs) * 100 : 0;
     barEl.style.width = `${pct}%`;
