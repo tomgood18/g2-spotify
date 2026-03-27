@@ -240,9 +240,20 @@ async function startApp() {
 
   if (error) { logout(); return; }
 
+  // Force re-auth if scopes have changed since last login
+  const storedScopes = localStorage.getItem('spotify_scopes');
+  if (token && storedScopes !== SCOPES) {
+    console.log('Scopes changed — clearing token for re-auth');
+    localStorage.removeItem('spotify_token');
+    token = null;
+  }
+
   if (code && !token) {
     token = await exchangeCode(code);
-    if (token) window.history.replaceState({}, '', REDIRECT_URI);
+    if (token) {
+      localStorage.setItem('spotify_scopes', SCOPES);
+      window.history.replaceState({}, '', REDIRECT_URI);
+    }
   }
 
   renderWebUI(!!token);
@@ -366,9 +377,11 @@ async function fetchLibrary(token: string) {
     const res = await fetch('https://api.spotify.com/v1/me/playlists?limit=50', {
       headers: { Authorization: `Bearer ${token}` }
     });
+    if (!res.ok) { console.error('fetchLibrary failed:', res.status, await res.text()); playlistList = []; return; }
     const data = await res.json();
     playlistList = data.items || [];
-  } catch (e) { playlistList = []; }
+    console.log('fetchLibrary: loaded', playlistList.length, 'playlists');
+  } catch (e) { console.error('fetchLibrary error:', e); playlistList = []; }
 }
 
 async function fetchLikedSongs(token: string) {
@@ -376,9 +389,11 @@ async function fetchLikedSongs(token: string) {
     const res = await fetch('https://api.spotify.com/v1/me/tracks?limit=50', {
       headers: { Authorization: `Bearer ${token}` }
     });
+    if (!res.ok) { console.error('fetchLikedSongs failed:', res.status, await res.text()); playlistTracks = []; return; }
     const data = await res.json();
     playlistTracks = (data.items || []).map((item: any) => item.track);
-  } catch (e) { playlistTracks = []; }
+    console.log('fetchLikedSongs: loaded', playlistTracks.length, 'tracks');
+  } catch (e) { console.error('fetchLikedSongs error:', e); playlistTracks = []; }
 }
 
 async function fetchPlaylistTracks(token: string, playlistId: string) {
@@ -386,9 +401,11 @@ async function fetchPlaylistTracks(token: string, playlistId: string) {
     const res = await fetch(`https://api.spotify.com/v1/playlists/${playlistId}/tracks?limit=50`, {
       headers: { Authorization: `Bearer ${token}` }
     });
+    if (!res.ok) { console.error('fetchPlaylistTracks failed:', res.status, await res.text()); playlistTracks = []; return; }
     const data = await res.json();
     playlistTracks = (data.items || []).map((item: any) => item.track).filter(Boolean);
-  } catch (e) { playlistTracks = []; }
+    console.log('fetchPlaylistTracks: loaded', playlistTracks.length, 'tracks');
+  } catch (e) { console.error('fetchPlaylistTracks error:', e); playlistTracks = []; }
 }
 
 async function fetchDevices(token: string) {
