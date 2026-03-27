@@ -398,7 +398,7 @@ async function fetchLikedSongs(token: string) {
 
 async function fetchPlaylistTracks(token: string, playlistId: string) {
   try {
-    const res = await fetch(`https://api.spotify.com/v1/playlists/${playlistId}/tracks?limit=50&fields=items(track(name,uri,artists))`, {
+    const res = await fetch(`https://api.spotify.com/v1/playlists/${playlistId}/tracks?limit=50`, {
       headers: { Authorization: `Bearer ${token}` }
     });
     if (!res.ok) { console.error('fetchPlaylistTracks failed:', res.status, await res.text()); playlistTracks = []; return; }
