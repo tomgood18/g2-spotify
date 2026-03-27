@@ -1,22 +1,24 @@
-import { 
-  waitForEvenAppBridge, 
-  CreateStartUpPageContainer, 
-  TextContainerProperty, 
-  ListContainerProperty, 
-  ListItemContainerProperty, 
-  RebuildPageContainer 
+import {
+  waitForEvenAppBridge,
+  CreateStartUpPageContainer,
+  TextContainerProperty,
+  ListContainerProperty,
+  ListItemContainerProperty,
+  RebuildPageContainer
 } from '@evenrealities/even_hub_sdk';
 
 // --- CONFIG ---
 const CLIENT_ID = '0dac788532204ec9aed1b36ea9a20f0d';
 const REDIRECT_URI = window.location.origin + window.location.pathname;
-const SCOPES = 'user-modify-playback-state user-read-playback-state user-read-currently-playing';
+const SCOPES = 'user-modify-playback-state user-read-playback-state user-read-currently-playing playlist-read-private user-library-read';
 
 // --- STATE ---
 let isFirstRender = true;
-let menuState: 'main' | 'devices' | 'queue' | 'track_action' = 'main';
+let menuState: 'main' | 'devices' | 'library' | 'playlist_tracks' | 'track_action' = 'main';
 let deviceList: any[] = [];
-let queueList: any[] = [];
+let playlistList: any[] = [];
+let playlistTracks: any[] = [];
+let selectedPlaylist: any = null; // null = Liked Songs
 let selectedTrack: any = null;
 let contextUri: string | null = null;
 let trackData = {
@@ -91,12 +93,11 @@ const formatTime = (ms: number) => {
   return `${m}:${s < 10 ? '0' : ''}${s}`;
 };
 
-// Truncation helper for Ellipsis
 const truncate = (str: string, len: number) => {
   return str.length > len ? str.substring(0, len - 3) + "..." : str;
 };
 
-function getMenuItems() {
+function getMenuItems(): string[] {
   if (menuState === 'devices') {
     const names = deviceList.length > 0
       ? deviceList.map(d => truncate((d.name || "DEVICE").toUpperCase(), 15))
@@ -104,24 +105,28 @@ function getMenuItems() {
     names.push('BACK');
     return names;
   }
-  if (menuState === 'queue') {
-    const names = queueList.length > 0
-      ? queueList.map(t => truncate(t.name.toUpperCase(), 15))
-      : ['QUEUE EMPTY'];
+  if (menuState === 'library') {
+    const names = ['LIKED SONGS', ...playlistList.map(p => truncate(p.name.toUpperCase(), 15)), 'BACK'];
+    return names;
+  }
+  if (menuState === 'playlist_tracks') {
+    const names = playlistTracks.length > 0
+      ? playlistTracks.map(t => truncate(t.name.toUpperCase(), 15))
+      : ['NO TRACKS'];
     names.push('BACK');
     return names;
   }
   if (menuState === 'track_action') {
     return ['PLAY NOW', 'ADD TO QUEUE', 'BACK'];
   }
-  return ['PLAY', 'PAUSE', 'NEXT', 'PREV', 'DEVICES', 'UP NEXT'];
+  return ['YOUR LIBRARY', 'PLAY', 'PAUSE', 'NEXT', 'PREV', 'DEVICES'];
 }
 
 // ================= WEB UI RENDERER =================
 
 function renderWebUI(isLoggedIn: boolean) {
   document.body.style.cssText = "margin:0; padding:0; background-color:#121212; color:white; font-family:'Circular Sp', Helvetica, Arial, sans-serif; display:flex; flex-direction:column; min-height:100vh; overflow:hidden;";
-  
+
   if (!isLoggedIn) {
     document.body.innerHTML = `
       <div style="flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center; padding: 20px;">
@@ -161,28 +166,35 @@ async function updateGlassesUI(bridge: any, forcePageRefresh = false) {
   const token = localStorage.getItem('spotify_token');
   if (!token) return;
 
-  // Locally increment progress if playing for smooth 1s updates
-  if(trackData.isPlaying && trackData.progressMs < trackData.durationMs) {
+  if (trackData.isPlaying && trackData.progressMs < trackData.durationMs) {
     trackData.progressMs += 1000;
-    updateWebDisplay(); // Sync Web UI immediately
+    updateWebDisplay();
   }
 
   const timeStr = `${formatTime(trackData.progressMs)} / ${formatTime(trackData.durationMs)}`;
-  const displayContent = menuState === 'track_action' && selectedTrack
-    ? `   ${truncate(selectedTrack.name, 50)}\n   ${truncate(selectedTrack.artists?.[0]?.name ?? '', 50)}\n   Select an action`
-    : `   ${truncate(trackData.name, 50)}\n   ${truncate(trackData.artist, 50)}\n   ${timeStr}`;
+  let displayContent: string;
+  if (menuState === 'track_action' && selectedTrack) {
+    displayContent = `   ${truncate(selectedTrack.name, 50)}\n   ${truncate(selectedTrack.artists?.[0]?.name ?? '', 50)}\n   Select an action`;
+  } else if (menuState === 'library') {
+    displayContent = `   YOUR LIBRARY\n   Select a playlist`;
+  } else if (menuState === 'playlist_tracks') {
+    const listName = selectedPlaylist ? truncate(selectedPlaylist.name, 50) : 'LIKED SONGS';
+    displayContent = `   ${listName}\n   Select a track`;
+  } else {
+    displayContent = `   ${truncate(trackData.name, 50)}\n   ${truncate(trackData.artist, 50)}\n   ${timeStr}`;
+  }
 
   try {
     const menuNames = getMenuItems();
 
     if (isFirstRender) {
       const textObj = TextContainerProperty.fromJson({
-        xPosition: 10, yPosition: 10, width: 550, height: 85, 
+        xPosition: 10, yPosition: 10, width: 550, height: 85,
         containerID: 1, containerName: 'text_box',
         content: displayContent, isEventCapture: 0, borderWidth: 1, borderColor: 7
       });
       const listObj = ListContainerProperty.fromJson({
-        xPosition: 10, yPosition: 100, width: 550, height: 175, 
+        xPosition: 10, yPosition: 100, width: 550, height: 175,
         containerID: 2, containerName: 'list_box',
         itemContainer: ListItemContainerProperty.fromJson({
           itemCount: menuNames.length, itemName: menuNames, isItemSelectBorderEn: 1
@@ -196,12 +208,12 @@ async function updateGlassesUI(bridge: any, forcePageRefresh = false) {
       if (res === 0) isFirstRender = false;
     } else if (forcePageRefresh) {
       const textObj = TextContainerProperty.fromJson({
-        xPosition: 10, yPosition: 10, width: 550, height: 85, 
+        xPosition: 10, yPosition: 10, width: 550, height: 85,
         containerID: 1, containerName: 'text_box',
         content: displayContent, isEventCapture: 0, borderWidth: 1, borderColor: 7
       });
       const listObj = ListContainerProperty.fromJson({
-        xPosition: 10, yPosition: 100, width: 550, height: 175, 
+        xPosition: 10, yPosition: 100, width: 550, height: 175,
         containerID: 2, containerName: 'list_box',
         itemContainer: ListItemContainerProperty.fromJson({
           itemCount: menuNames.length, itemName: menuNames, isItemSelectBorderEn: 1
@@ -241,9 +253,7 @@ async function startApp() {
       await syncSpotify(token);
       updateGlassesUI(bridge);
 
-      // Web/Glasses tick every 1 second
       setInterval(() => updateGlassesUI(bridge), 1000);
-      // Hard sync with Spotify API every 5 seconds to stay accurate
       setInterval(() => syncSpotify(token!), 5000);
 
       bridge.onEvenHubEvent(async (e: any) => {
@@ -252,14 +262,14 @@ async function startApp() {
         const idx = source.currentSelectItemIndex ?? 0;
 
         if (menuState === 'main') {
-          const action = ['play', 'pause', 'next', 'previous', 'devices', 'queue'][idx];
-          if (action === 'devices') {
+          const action = ['library', 'play', 'pause', 'next', 'previous', 'devices'][idx];
+          if (action === 'library') {
+            menuState = 'library';
+            await fetchLibrary(token!);
+            updateGlassesUI(bridge, true);
+          } else if (action === 'devices') {
             menuState = 'devices';
             await fetchDevices(token!);
-            updateGlassesUI(bridge, true);
-          } else if (action === 'queue') {
-            menuState = 'queue';
-            await fetchQueue(token!);
             updateGlassesUI(bridge, true);
           } else if (action) {
             await fetch(`https://api.spotify.com/v1/me/player/${action}`, {
@@ -286,13 +296,35 @@ async function startApp() {
           }
           updateGlassesUI(bridge, true);
 
-        } else if (menuState === 'queue') {
+        } else if (menuState === 'library') {
           const items = getMenuItems();
           if (items[idx] === 'BACK') {
             menuState = 'main';
             updateGlassesUI(bridge, true);
-          } else if (idx < queueList.length) {
-            selectedTrack = queueList[idx];
+          } else if (items[idx] === 'LIKED SONGS') {
+            selectedPlaylist = null;
+            menuState = 'playlist_tracks';
+            await fetchLikedSongs(token!);
+            updateGlassesUI(bridge, true);
+          } else {
+            // idx - 1 because index 0 is Liked Songs
+            const playlist = playlistList[idx - 1];
+            if (playlist) {
+              selectedPlaylist = playlist;
+              menuState = 'playlist_tracks';
+              await fetchPlaylistTracks(token!, playlist.id);
+              updateGlassesUI(bridge, true);
+            }
+          }
+
+        } else if (menuState === 'playlist_tracks') {
+          const items = getMenuItems();
+          if (items[idx] === 'BACK') {
+            menuState = 'library';
+            selectedPlaylist = null;
+            updateGlassesUI(bridge, true);
+          } else if (idx < playlistTracks.length) {
+            selectedTrack = playlistTracks[idx];
             menuState = 'track_action';
             updateGlassesUI(bridge, true);
           }
@@ -300,8 +332,8 @@ async function startApp() {
         } else if (menuState === 'track_action') {
           const action = ['play_now', 'add_to_queue', 'back'][idx];
           if (action === 'play_now') {
-            const playBody = contextUri
-              ? { context_uri: contextUri, offset: { uri: selectedTrack.uri }, position_ms: 0 }
+            const playBody = selectedPlaylist
+              ? { context_uri: selectedPlaylist.uri, offset: { uri: selectedTrack.uri }, position_ms: 0 }
               : { uris: [selectedTrack.uri] };
             await fetch('https://api.spotify.com/v1/me/player/play', {
               method: 'PUT',
@@ -317,10 +349,10 @@ async function startApp() {
               headers: { Authorization: `Bearer ${token}` }
             });
             selectedTrack = null;
-            menuState = 'queue';
+            menuState = 'playlist_tracks';
           } else if (action === 'back') {
             selectedTrack = null;
-            menuState = 'queue';
+            menuState = 'playlist_tracks';
           }
           updateGlassesUI(bridge, true);
         }
@@ -329,15 +361,34 @@ async function startApp() {
   }
 }
 
-async function fetchQueue(token: string) {
+async function fetchLibrary(token: string) {
   try {
-    const res = await fetch('https://api.spotify.com/v1/me/player/queue', {
+    const res = await fetch('https://api.spotify.com/v1/me/playlists?limit=50', {
       headers: { Authorization: `Bearer ${token}` }
     });
     const data = await res.json();
-    queueList = data.queue || [];
-    return queueList;
-  } catch (e) { return []; }
+    playlistList = data.items || [];
+  } catch (e) { playlistList = []; }
+}
+
+async function fetchLikedSongs(token: string) {
+  try {
+    const res = await fetch('https://api.spotify.com/v1/me/tracks?limit=50', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    const data = await res.json();
+    playlistTracks = (data.items || []).map((item: any) => item.track);
+  } catch (e) { playlistTracks = []; }
+}
+
+async function fetchPlaylistTracks(token: string, playlistId: string) {
+  try {
+    const res = await fetch(`https://api.spotify.com/v1/playlists/${playlistId}/tracks?limit=50`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    const data = await res.json();
+    playlistTracks = (data.items || []).map((item: any) => item.track).filter(Boolean);
+  } catch (e) { playlistTracks = []; }
 }
 
 async function fetchDevices(token: string) {
@@ -383,9 +434,9 @@ function updateWebDisplay() {
   const nameEl = document.getElementById('web-track-name');
   const artistEl = document.getElementById('web-track-artist');
   const barEl = document.getElementById('web-progress-bar');
-  const pTimeEl = document.getElementById('web-p-time'); 
-  const dTimeEl = document.getElementById('web-d-time'); 
-  
+  const pTimeEl = document.getElementById('web-p-time');
+  const dTimeEl = document.getElementById('web-d-time');
+
   if (nameEl) nameEl.innerText = trackData.name;
   if (artistEl) artistEl.innerText = trackData.artist;
   if (pTimeEl) pTimeEl.innerText = formatTime(trackData.progressMs);
