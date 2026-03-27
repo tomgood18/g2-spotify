@@ -14,8 +14,10 @@ const SCOPES = 'user-modify-playback-state user-read-playback-state user-read-cu
 
 // --- STATE ---
 let isFirstRender = true;
-let isSubMenu = false; 
+let menuState: 'main' | 'devices' | 'queue' | 'track_action' = 'main';
 let deviceList: any[] = [];
+let queueList: any[] = [];
+let selectedTrack: any = null;
 let trackData = {
   name: "Loading...",
   artist: "Spotify",
@@ -94,14 +96,24 @@ const truncate = (str: string, len: number) => {
 };
 
 function getMenuItems() {
-  if (isSubMenu) {
-    const names = deviceList.length > 0 
-      ? deviceList.map(d => truncate((d.name || "DEVICE").toUpperCase(), 15)) 
+  if (menuState === 'devices') {
+    const names = deviceList.length > 0
+      ? deviceList.map(d => truncate((d.name || "DEVICE").toUpperCase(), 15))
       : ['NO DEVICES'];
     names.push('BACK');
     return names;
   }
-  return ['PLAY', 'PAUSE', 'NEXT', 'PREV', 'DEVICES'];
+  if (menuState === 'queue') {
+    const names = queueList.length > 0
+      ? queueList.map(t => truncate(t.name.toUpperCase(), 15))
+      : ['QUEUE EMPTY'];
+    names.push('BACK');
+    return names;
+  }
+  if (menuState === 'track_action') {
+    return ['PLAY NOW', 'ADD TO QUEUE', 'BACK'];
+  }
+  return ['PLAY', 'PAUSE', 'NEXT', 'PREV', 'DEVICES', 'QUEUE'];
 }
 
 // ================= WEB UI RENDERER =================
@@ -155,7 +167,9 @@ async function updateGlassesUI(bridge: any, forcePageRefresh = false) {
   }
 
   const timeStr = `${formatTime(trackData.progressMs)} / ${formatTime(trackData.durationMs)}`;
-  const displayContent = `   ${truncate(trackData.name, 50)}\n   ${truncate(trackData.artist, 50)}\n   ${timeStr}`;
+  const displayContent = menuState === 'track_action' && selectedTrack
+    ? `   ${truncate(selectedTrack.name, 50)}\n   ${truncate(selectedTrack.artists?.[0]?.name ?? '', 50)}\n   Select an action`
+    : `   ${truncate(trackData.name, 50)}\n   ${truncate(trackData.artist, 50)}\n   ${timeStr}`;
 
   try {
     const menuNames = getMenuItems();
@@ -234,26 +248,30 @@ async function startApp() {
       bridge.onEvenHubEvent(async (e: any) => {
         const source = e.listEvent || (e.jsonData && typeof e.jsonData === 'object' ? e.jsonData : null);
         if (!source) return;
-        let idx = source.currentSelectItemIndex ?? 0;
+        const idx = source.currentSelectItemIndex ?? 0;
 
-        if (!isSubMenu) {
-          const action = ['play', 'pause', 'next', 'previous', 'devices'][idx];
+        if (menuState === 'main') {
+          const action = ['play', 'pause', 'next', 'previous', 'devices', 'queue'][idx];
           if (action === 'devices') {
-            isSubMenu = true;
+            menuState = 'devices';
             await fetchDevices(token!);
             updateGlassesUI(bridge, true);
+          } else if (action === 'queue') {
+            menuState = 'queue';
+            await fetchQueue(token!);
+            updateGlassesUI(bridge, true);
           } else if (action) {
-            await fetch(`https://api.spotify.com/v1/me/player/${action === 'play' || action === 'pause' ? action : action}`, {
+            await fetch(`https://api.spotify.com/v1/me/player/${action}`, {
               method: (action === 'play' || action === 'pause') ? 'PUT' : 'POST',
               headers: { Authorization: `Bearer ${token}` }
             });
-            setTimeout(() => syncSpotify(token!), 500); // Quick refresh after command
+            setTimeout(() => syncSpotify(token!), 500);
           }
-        } else {
+
+        } else if (menuState === 'devices') {
           const items = getMenuItems();
-          const selected = items[idx];
-          if (selected === 'BACK') {
-            isSubMenu = false;
+          if (items[idx] === 'BACK') {
+            menuState = 'main';
           } else if (idx < deviceList.length) {
             const dId = deviceList[idx]?.id;
             if (dId) {
@@ -263,13 +281,59 @@ async function startApp() {
                 body: JSON.stringify({ device_ids: [dId], play: true })
               });
             }
-            isSubMenu = false;
+            menuState = 'main';
+          }
+          updateGlassesUI(bridge, true);
+
+        } else if (menuState === 'queue') {
+          const items = getMenuItems();
+          if (items[idx] === 'BACK') {
+            menuState = 'main';
+            updateGlassesUI(bridge, true);
+          } else if (idx < queueList.length) {
+            selectedTrack = queueList[idx];
+            menuState = 'track_action';
+            updateGlassesUI(bridge, true);
+          }
+
+        } else if (menuState === 'track_action') {
+          const action = ['play_now', 'add_to_queue', 'back'][idx];
+          if (action === 'play_now') {
+            await fetch('https://api.spotify.com/v1/me/player/play', {
+              method: 'PUT',
+              headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ uris: [selectedTrack.uri] })
+            });
+            selectedTrack = null;
+            menuState = 'main';
+            setTimeout(() => syncSpotify(token!), 500);
+          } else if (action === 'add_to_queue') {
+            await fetch(`https://api.spotify.com/v1/me/player/queue?uri=${encodeURIComponent(selectedTrack.uri)}`, {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${token}` }
+            });
+            selectedTrack = null;
+            menuState = 'queue';
+          } else if (action === 'back') {
+            selectedTrack = null;
+            menuState = 'queue';
           }
           updateGlassesUI(bridge, true);
         }
       });
     } catch (e) { console.error(e); }
   }
+}
+
+async function fetchQueue(token: string) {
+  try {
+    const res = await fetch('https://api.spotify.com/v1/me/player/queue', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    const data = await res.json();
+    queueList = data.queue || [];
+    return queueList;
+  } catch (e) { return []; }
 }
 
 async function fetchDevices(token: string) {
