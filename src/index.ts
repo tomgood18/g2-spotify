@@ -111,7 +111,7 @@ function getMenuItems(): string[] {
   }
   if (menuState === 'playlist_tracks') {
     const names = playlistTracks.length > 0
-      ? playlistTracks.map(t => truncate(t.name.toUpperCase(), 15))
+      ? playlistTracks.map(t => truncate((t.name || 'UNKNOWN').toUpperCase(), 15))
       : ['NO TRACKS'];
     names.push('BACK');
     return names;
@@ -179,7 +179,7 @@ async function updateGlassesUI(bridge: any, forcePageRefresh = false) {
     displayContent = `   YOUR LIBRARY\n   Select a playlist`;
   } else if (menuState === 'playlist_tracks') {
     const listName = selectedPlaylist ? truncate(selectedPlaylist.name, 50) : 'LIKED SONGS';
-    displayContent = `   ${listName}\n   Select a track`;
+    displayContent = `   ${listName}\n   ${playlistTracks.length} tracks`;
   } else {
     displayContent = `   ${truncate(trackData.name, 50)}\n   ${truncate(trackData.artist, 50)}\n   ${timeStr}`;
   }
@@ -398,12 +398,15 @@ async function fetchLikedSongs(token: string) {
 
 async function fetchPlaylistTracks(token: string, playlistId: string) {
   try {
-    const res = await fetch(`https://api.spotify.com/v1/playlists/${playlistId}/tracks?limit=50`, {
+    const res = await fetch(`https://api.spotify.com/v1/playlists/${playlistId}/tracks?limit=50&fields=items(track(name,uri,artists))`, {
       headers: { Authorization: `Bearer ${token}` }
     });
     if (!res.ok) { console.error('fetchPlaylistTracks failed:', res.status, await res.text()); playlistTracks = []; return; }
     const data = await res.json();
-    playlistTracks = (data.items || []).map((item: any) => item.track).filter(Boolean);
+    console.log('fetchPlaylistTracks raw items:', JSON.stringify(data.items?.slice(0, 3)));
+    playlistTracks = (data.items || [])
+      .map((item: any) => item?.track)
+      .filter((t: any) => t && t.name && t.uri);
     console.log('fetchPlaylistTracks: loaded', playlistTracks.length, 'tracks');
   } catch (e) { console.error('fetchPlaylistTracks error:', e); playlistTracks = []; }
 }
