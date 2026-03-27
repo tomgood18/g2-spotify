@@ -18,6 +18,7 @@ let menuState: 'main' | 'devices' | 'queue' | 'track_action' = 'main';
 let deviceList: any[] = [];
 let queueList: any[] = [];
 let selectedTrack: any = null;
+let contextUri: string | null = null;
 let trackData = {
   name: "Loading...",
   artist: "Spotify",
@@ -113,7 +114,7 @@ function getMenuItems() {
   if (menuState === 'track_action') {
     return ['PLAY NOW', 'ADD TO QUEUE', 'BACK'];
   }
-  return ['PLAY', 'PAUSE', 'NEXT', 'PREV', 'DEVICES', 'QUEUE'];
+  return ['PLAY', 'PAUSE', 'NEXT', 'PREV', 'DEVICES', 'UP NEXT'];
 }
 
 // ================= WEB UI RENDERER =================
@@ -299,10 +300,13 @@ async function startApp() {
         } else if (menuState === 'track_action') {
           const action = ['play_now', 'add_to_queue', 'back'][idx];
           if (action === 'play_now') {
+            const playBody = contextUri
+              ? { context_uri: contextUri, offset: { uri: selectedTrack.uri }, position_ms: 0 }
+              : { uris: [selectedTrack.uri] };
             await fetch('https://api.spotify.com/v1/me/player/play', {
               method: 'PUT',
               headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-              body: JSON.stringify({ uris: [selectedTrack.uri] })
+              body: JSON.stringify(playBody)
             });
             selectedTrack = null;
             menuState = 'main';
@@ -363,6 +367,7 @@ async function syncSpotify(token: string) {
           durationMs: data.item.duration_ms,
           isPlaying: data.is_playing
         };
+        contextUri = data.context?.uri ?? null;
         updateWebDisplay();
       }
     } else if (res.status === 204) {
